@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% block title %}{% if listing %}Edit Listing{% else %}New Listing{% endif %} — Clinical Ops Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="/listings" class="breadcrumb">&laquo; All Listings</a>
+    <h1>{% if listing %}Edit: {{ listing.title }}{% else %}New Listing{% endif %}</h1>
+</div>
+
+{% set data = form_data if form_data else listing %}
+
+<form method="POST" action="{% if listing %}/listings/{{ listing.id }}{% else %}/listings{% endif %}" class="form-card">
+    <fieldset>
+        <legend>Basic Info</legend>
+
+        <div class="form-group">
+            <label for="title">Title <span class="required">*</span></label>
+            <input type="text" id="title" name="title" class="form-input" required minlength="3" maxlength="200"
+                   value="{{ data.title if data else '' }}">
+        </div>
+
+        <div class="form-group">
+            <label for="org_unit_id">Organization Unit <span class="required">*</span></label>
+            <select id="org_unit_id" name="org_unit_id" class="form-select" required>
+                <option value="">— Select org unit —</option>
+                {% for org in org_units %}
+                <option value="{{ org.id }}" {% if data and data.org_unit_id == org.id %}selected{% endif %}>{{ org.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Address</legend>
+
+        <div class="form-group">
+            <label for="address_line1">Address Line 1 <span class="required">*</span></label>
+            <input type="text" id="address_line1" name="address_line1" class="form-input" required
+                   value="{{ data.address_line1 if data else '' }}">
+        </div>
+
+        <div class="form-group">
+            <label for="address_line2">Address Line 2</label>
+            <input type="text" id="address_line2" name="address_line2" class="form-input"
+                   value="{{ data.address_line2 if data else '' }}">
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="city">City <span class="required">*</span></label>
+                <input type="text" id="city" name="city" class="form-input" required
+                       value="{{ data.city if data else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="state">State <span class="required">*</span></label>
+                <input type="text" id="state" name="state" class="form-input" required maxlength="2"
+                       value="{{ data.state if data else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="zip_code">ZIP Code <span class="required">*</span></label>
+                <input type="text" id="zip_code" name="zip_code" class="form-input" required pattern="\d{5}(-\d{4})?"
+                       value="{{ data.zip_code if data else '' }}">
+            </div>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Financials &amp; Lease</legend>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="monthly_rent">Monthly Rent ($) <span class="required">*</span></label>
+                <input type="number" id="monthly_rent" name="monthly_rent" class="form-input" required min="0.01" step="0.01"
+                       value="{{ '{:.2f}'.format(data.monthly_rent_cents / 100) if data and data.monthly_rent_cents else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="deposit">Deposit ($)</label>
+                <input type="number" id="deposit" name="deposit" class="form-input" min="0" step="0.01"
+                       value="{{ '{:.2f}'.format(data.deposit_cents / 100) if data and data.deposit_cents is not none else '' }}">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="lease_start">Lease Start <span class="required">*</span></label>
+                <input type="date" id="lease_start" name="lease_start" class="form-input" required
+                       value="{{ data.lease_start if data else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="lease_end">Lease End <span class="required">*</span></label>
+                <input type="date" id="lease_end" name="lease_end" class="form-input" required
+                       value="{{ data.lease_end if data else '' }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="square_footage">Square Footage</label>
+            <input type="number" id="square_footage" name="square_footage" class="form-input" min="1"
+                   value="{{ data.square_footage if data and data.square_footage else '' }}">
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Additional Details</legend>
+
+        <div class="form-group">
+            <label for="floor_plan_notes">Floor Plan Notes</label>
+            <textarea id="floor_plan_notes" name="floor_plan_notes" class="form-input" rows="4">{{ data.floor_plan_notes if data and data.floor_plan_notes else '' }}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Amenities</label>
+            <div class="checkbox-group">
+                {% set selected_amenities = data.amenities if data and data.amenities else [] %}
+                {% for amenity in ['parking', 'wifi', 'gym', 'pool', 'laundry', 'storage', 'pet_friendly', 'elevator', 'security'] %}
+                <label class="checkbox-label">
+                    <input type="checkbox" name="amenities" value="{{ amenity }}"
+                           {% if amenity in selected_amenities %}checked{% endif %}>
+                    {{ amenity | replace('_', ' ') | title }}
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+    </fieldset>
+
+    <div class="form-actions">
+        <a href="/listings{% if listing %}/{{ listing.id }}{% endif %}" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">{% if listing %}Save Changes{% else %}Create Listing{% endif %}</button>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,17 @@
+<table class="table table-striped">
+    <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Resource</th><th>Details</th></tr></thead>
+    <tbody>
+    {% for e in entries %}
+        <tr>
+            <td>{{ e.timestamp }}</td>
+            <td>{{ e.user_id }}</td>
+            <td><span class="badge">{{ e.action }}</span></td>
+            <td>{{ e.resource_type }} #{{ e.resource_id }}</td>
+            <td><code>{{ e.new_value or e.old_value or '' }}</code></td>
+        </tr>
+    {% endfor %}
+    {% if not entries %}
+        <tr><td colspan="5" class="text-muted text-center">No audit entries found.</td></tr>
+    {% endif %}
+    </tbody>
+</table>

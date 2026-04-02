@@ -1,0 +1,23 @@
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - db_data:/app/data
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=sqlite:////app/data/clinical_ops.db
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production-secret-key}
+      - HMAC_SECRET=${HMAC_SECRET:-change-me-in-production-hmac-secret}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+    command: >
+      sh -c "
+        flask db-init &&
+        flask db-seed &&
+        gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 120 'app:create_app(\"production\")'
+      "
+    restart: unless-stopped
+
+volumes:
+  db_data:

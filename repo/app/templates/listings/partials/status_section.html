@@ -1,0 +1,53 @@
+<div class="status-card">
+    <h3>Status</h3>
+    <span class="badge badge-{{ listing.status }} badge-lg">{{ listing.status | replace('_', ' ') | title }}</span>
+
+    {% if listing.published_at %}
+    <p class="status-meta">Published: {{ listing.published_at.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+    {% endif %}
+    {% if listing.locked_at %}
+    <p class="status-meta">Locked: {{ listing.locked_at.strftime('%Y-%m-%d %H:%M') }} UTC</p>
+    {% endif %}
+
+    <div class="status-actions">
+        {% set allowed = {
+            'draft': ['pending_review'],
+            'pending_review': ['published', 'draft'],
+            'published': ['unpublished', 'expired', 'locked'],
+            'unpublished': ['draft', 'locked'],
+            'expired': ['locked'],
+            'locked': ['draft'],
+        } %}
+        {% set next_statuses = allowed.get(listing.status, []) %}
+        {% if next_statuses %}
+        <form method="POST" action="/api/listings/{{ listing.id }}/status"
+              hx-post="/api/listings/{{ listing.id }}/status"
+              hx-target="#status-section"
+              hx-swap="innerHTML">
+            <select name="status" class="form-select">
+                {% for s in next_statuses %}
+                <option value="{{ s }}">{{ s | replace('_', ' ') | title }}</option>
+                {% endfor %}
+            </select>
+            <textarea name="reason" placeholder="Reason (required for unpublish)" class="form-input" rows="2"></textarea>
+            <button type="submit" class="btn btn-primary btn-sm">Change Status</button>
+        </form>
+        {% endif %}
+    </div>
+
+    {% if detail.status_history %}
+    <div class="status-history">
+        <h4>History</h4>
+        <ul>
+            {% for h in detail.status_history %}
+            <li>
+                <span class="badge badge-{{ h.new_status }}">{{ h.new_status | replace('_', ' ') | title }}</span>
+                {% if h.old_status %}<small>from {{ h.old_status }}</small>{% endif %}
+                {% if h.reason %}<em> — {{ h.reason }}</em>{% endif %}
+                <small class="muted">{{ h.changed_at[:16] if h.changed_at else '' }}</small>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>

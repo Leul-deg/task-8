@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Admin Panel{% endblock %}
+{% block content %}
+<div class="container">
+    <h1>Administration</h1>
+    <div class="grid">
+        <a href="/admin/users" class="card card-link"><h3>User Management</h3><p>Manage users, roles, and permissions</p></a>
+        <a href="/admin/permissions/audit" class="card card-link"><h3>Permission Audit</h3><p>Review permission changes and export reports</p></a>
+        <a href="/admin/backups" class="card card-link"><h3>Backups</h3><p>Manage database backups and restores</p></a>
+        <a href="/admin/org-settings" class="card card-link"><h3>Org Unit Settings</h3><p>Configure reviewer display mode per org unit</p></a>
+    </div>
+</div>
+{% endblock %}

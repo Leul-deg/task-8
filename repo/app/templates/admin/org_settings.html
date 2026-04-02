@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Org Unit Settings — Admin{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <a href="/admin" class="breadcrumb">&laquo; Admin</a>
+        <h1>Org Unit Settings</h1>
+    </div>
+
+    <p>Configure per-org-unit settings. <strong>Reviewer Display Mode</strong> controls how reviewer
+    names appear on class review pages.</p>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Org Unit</th>
+                <th>Code</th>
+                <th>Level</th>
+                <th>Reviewer Display Mode</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for org in orgs %}
+            <tr>
+                <td>{{ org.name }}</td>
+                <td><code>{{ org.code }}</code></td>
+                <td>{{ org.level }}</td>
+                <td>
+                    <form method="POST" action="/admin/org-settings/{{ org.id }}" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <select name="reviewer_display_mode" class="form-select form-select-sm">
+                            {% for mode in display_modes %}
+                            <option value="{{ mode }}" {% if org.reviewer_display_mode == mode %}selected{% endif %}>
+                                {{ mode | replace('_', ' ') | title }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                </td>
+                <td>
+                        <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

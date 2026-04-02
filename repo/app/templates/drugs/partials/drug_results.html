@@ -1,0 +1,35 @@
+{% if items %}
+<div class="drug-grid">
+    {% for entry in items %}
+    {% set d = entry.drug %}
+    <div class="card drug-card">
+        <div class="card-header">
+            <a href="/drugs/{{ d.id }}"><strong>{{ d.generic_name }}</strong></a>
+            {% if d.brand_name %}<span class="text-muted">({{ d.brand_name }})</span>{% endif %}
+            <span class="badge badge-form">{{ d.form }}</span>
+            <span class="badge badge-{{ d.status }}">{{ d.status | replace('_', ' ') | title }}</span>
+        </div>
+        <div class="card-body">
+            <p class="drug-strength">{{ d.strength }}</p>
+            {% if d.ndc_code %}<p class="text-muted">NDC: {{ d.ndc_code }}</p>{% endif %}
+            {% if entry.snippet %}
+            <p class="search-snippet">{{ entry.snippet | safe }}</p>
+            {% elif d.description %}
+            <p class="text-muted">{{ d.description[:120] }}{% if d.description | length > 120 %}…{% endif %}</p>
+            {% endif %}
+        </div>
+        <div class="card-footer">
+            <a href="/drugs/{{ d.id }}" class="btn btn-sm">View</a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% if total > items | length %}
+<p class="text-muted" style="margin-top:1rem;">Showing {{ items | length }} of {{ total }} results.</p>
+{% endif %}
+{% else %}
+<div class="empty-state">
+    <p>No drugs found{% if query %} for "{{ query }}"{% endif %}.</p>
+    <a href="/drugs/new" class="btn btn-primary">Add a drug entry</a>
+</div>
+{% endif %}

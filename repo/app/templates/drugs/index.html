@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Drug Formulary{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Drug Formulary</h1>
+    <a href="/drugs/new" class="btn btn-primary">+ New Drug</a>
+</div>
+
+<div class="filter-bar">
+    <input type="text" name="q" value="{{ query }}" placeholder="Search drugs…" class="form-input"
+           hx-get="/api/drugs" hx-trigger="keyup changed delay:300ms" hx-target="#drug-results"
+           hx-include="[name=form],[name=status]">
+    <select name="form" class="form-select"
+            hx-get="/api/drugs" hx-trigger="change" hx-target="#drug-results"
+            hx-include="[name=q],[name=status]">
+        <option value="">All Forms</option>
+        {% for f in drug_forms %}
+        <option value="{{ f.value }}">{{ f.value | title }}</option>
+        {% endfor %}
+    </select>
+    {% if is_admin %}
+    <select name="status" class="form-select"
+            hx-get="/api/drugs" hx-trigger="change" hx-target="#drug-results"
+            hx-include="[name=q],[name=form]">
+        <option value="">Approved Only</option>
+        {% for s in drug_statuses %}
+        <option value="{{ s.value }}">{{ s.value | replace('_', ' ') | title }}</option>
+        {% endfor %}
+    </select>
+    {% endif %}
+</div>
+
+<div id="drug-results">
+    {% include 'drugs/partials/drug_results.html' %}
+</div>
+{% endblock %}

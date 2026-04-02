@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% block title %}Import Drugs — Drug Formulary{% endblock %}
+{% block content %}
+<div class="page-header">
+    <a href="/drugs" class="breadcrumb">&laquo; Drug Formulary</a>
+    <h1>Bulk Import Drugs (CSV)</h1>
+</div>
+
+<div class="form-card">
+    <h2>Expected CSV Format</h2>
+    <p>The CSV file must have a header row with these columns (order does not matter):</p>
+    <table class="table" style="margin-bottom:1rem;">
+        <thead><tr><th>Column</th><th>Required</th><th>Notes</th></tr></thead>
+        <tbody>
+            <tr><td><code>generic_name</code></td><td>Yes</td><td>Drug generic name</td></tr>
+            <tr><td><code>strength</code></td><td>Yes</td><td>e.g. 500mg, 10mcg</td></tr>
+            <tr><td><code>form</code></td><td>Yes</td><td>tablet, capsule, liquid, injection, patch, inhaler, cream, suppository, drops</td></tr>
+            <tr><td><code>brand_name</code></td><td>No</td><td>Trade/brand name</td></tr>
+            <tr><td><code>ndc_code</code></td><td>No</td><td>Format: XXXXX-XXXX-XX</td></tr>
+            <tr><td><code>description</code></td><td>No</td><td>Free text</td></tr>
+            <tr><td><code>contraindications</code></td><td>No</td><td>Free text</td></tr>
+            <tr><td><code>side_effects</code></td><td>No</td><td>Free text</td></tr>
+        </tbody>
+    </table>
+    <p class="text-muted">Duplicate entries (same generic_name + strength + form, case-insensitive) are skipped automatically. All imported drugs start with <strong>draft</strong> status.</p>
+
+    <form method="POST" action="/drugs/import" enctype="multipart/form-data" style="margin-top:1.5rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+            <label for="csv_file">Select CSV File <span class="required">*</span></label>
+            <input type="file" id="csv_file" name="csv_file" accept=".csv" class="form-input" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Upload &amp; Import</button>
+    </form>
+</div>
+
+{% if result %}
+<div class="card" style="margin-top:1.5rem;">
+    <h2>Import Results</h2>
+    <dl class="detail-list">
+        <dt>Imported</dt><dd><span class="badge badge-success">{{ result.imported }}</span></dd>
+        <dt>Skipped (duplicates)</dt><dd><span class="badge badge-secondary">{{ result.skipped }}</span></dd>
+        <dt>Errors</dt><dd><span class="badge badge-{{ 'danger' if result.errors else 'secondary' }}">{{ result.errors | length }}</span></dd>
+    </dl>
+    {% if result.errors %}
+    <h3 style="margin-top:1rem;">Row Errors</h3>
+    <table class="table">
+        <thead><tr><th>Row</th><th>Error</th></tr></thead>
+        <tbody>
+            {% for err in result.errors %}
+            <tr><td>{{ err.row }}</td><td>{{ err.error }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

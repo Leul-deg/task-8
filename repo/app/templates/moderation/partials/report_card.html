@@ -1,0 +1,40 @@
+<div class="card" id="report-{{ report.id }}" style="margin-bottom:1rem;">
+    <div class="card-header">
+        <span class="badge badge-{{ report.status }}">{{ report.status | replace('_', ' ') | title }}</span>
+        <span class="text-muted">Reported {{ report.created_at }}</span>
+    </div>
+    <div class="card-body">
+        <p><strong>Reason:</strong> {{ report.reason }}</p>
+        {% if report.keyword_matches %}
+            <p><strong>Keywords:</strong> {% for kw in report.keyword_matches %}<span class="badge badge-danger">{{ kw }}</span> {% endfor %}</p>
+        {% endif %}
+        {% if report.review %}
+            <blockquote class="review-excerpt">{{ report.review.comment[:200] if report.review.comment else 'No comment' }}{% if report.review.comment and report.review.comment|length > 200 %}...{% endif %}</blockquote>
+        {% endif %}
+    </div>
+    <div class="card-footer">
+        {% if report.status == 'pending' %}
+            <form method="POST" action="/api/moderation/reports/{{ report.id }}/hide" style="display:inline;"
+                  hx-post="/api/moderation/reports/{{ report.id }}/hide" hx-target="#report-{{ report.id }}" hx-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-danger">Hide Review</button>
+            </form>
+            <form method="POST" action="/api/moderation/reports/{{ report.id }}/restore" style="display:inline;"
+                  hx-post="/api/moderation/reports/{{ report.id }}/restore" hx-target="#report-{{ report.id }}" hx-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-secondary">Dismiss</button>
+            </form>
+        {% elif report.status == 'review_hidden' %}
+            <form method="POST" action="/api/moderation/reports/{{ report.id }}/restore" style="display:inline;"
+                  hx-post="/api/moderation/reports/{{ report.id }}/restore" hx-target="#report-{{ report.id }}" hx-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-success">Restore</button>
+            </form>
+            <form method="POST" action="/api/moderation/reports/{{ report.id }}/finalize" style="display:inline;"
+                  hx-post="/api/moderation/reports/{{ report.id }}/finalize" hx-target="#report-{{ report.id }}" hx-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-secondary">Finalize</button>
+            </form>
+        {% endif %}
+    </div>
+</div>

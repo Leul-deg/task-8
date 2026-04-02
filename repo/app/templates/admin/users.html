@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}User Management{% endblock %}
+{% block content %}
+<div class="container">
+    <h1>User Management</h1>
+    <input type="text" class="form-input search-input" name="search" placeholder="Search users..."
+           hx-get="/api/admin/users" hx-trigger="keyup changed delay:300ms"
+           hx-target="#user-table-body" hx-include="this">
+    <table class="table table-striped">
+        <thead>
+            <tr><th>Username</th><th>Full Name</th><th>Email</th><th>Roles</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="user-table-body">
+            {% include "admin/partials/user_table.html" %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

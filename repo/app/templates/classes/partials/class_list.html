@@ -1,0 +1,17 @@
+<table class="table table-striped">
+    <thead><tr><th>Title</th><th>Instructor</th><th>Date</th><th>Location</th><th>Attendees</th><th>Rating</th></tr></thead>
+    <tbody>
+    {% for c in classes %}
+        <tr>
+            <td><a href="/classes/{{ c.id }}">{{ c.title }}</a></td>
+            <td>{{ c.instructor.full_name or c.instructor.username if c.instructor else '—' }}</td>
+            <td>{{ c.class_date }}</td>
+            <td>{{ c.location }}</td>
+            <td>{{ c.attendees | length }}/{{ c.max_attendees }}</td>
+            <td>—</td>
+        </tr>
+    {% else %}
+        <tr><td colspan="6" class="text-muted text-center">No classes found.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}New Training Class{% endblock %}
+{% block content %}
+<div class="container">
+    <h1>Create Training Class</h1>
+    <form method="POST" action="/classes" class="card">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group"><label class="form-label">Title *</label><input name="title" class="form-input" required></div>
+        <div class="form-group"><label class="form-label">Description</label><textarea name="description" class="form-input" rows="3"></textarea></div>
+        <div class="form-group"><label class="form-label">Date *</label><input name="class_date" type="date" class="form-input" required></div>
+        <div class="form-group"><label class="form-label">Location *</label><input name="location" class="form-input" required></div>
+        <div class="form-group"><label class="form-label">Max Attendees</label><input name="max_attendees" type="number" class="form-input" value="30" min="1" max="500"></div>
+        <div class="form-group">
+            <label class="form-label">Organization Unit *</label>
+            <select name="org_unit_id" class="form-input" required>
+                {% for org in org_units %}<option value="{{ org.id }}">{{ org.name }}</option>{% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Create Class</button>
+    </form>
+</div>
+{% endblock %}

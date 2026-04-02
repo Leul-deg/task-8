@@ -1,0 +1,43 @@
+{% if items %}
+<div class="listing-grid">
+    {% for listing in items %}
+    <div class="listing-card status-{{ listing.status }}">
+        <div class="listing-card-header">
+            <h3><a href="/listings/{{ listing.id }}">{{ listing.title }}</a></h3>
+            <span class="badge badge-{{ listing.status }}">{{ listing.status | replace('_', ' ') | title }}</span>
+        </div>
+        <div class="listing-card-body">
+            <p class="listing-address">{{ listing.address_line1 | mask_for_role('address') }}{% if listing.address_line2 %}, {{ listing.address_line2 | mask_for_role('address') }}{% endif %}<br>{{ listing.city }}, {{ listing.state }} {{ listing.zip_code }}</p>
+            <p class="listing-rent">${{ '{:,.2f}'.format(listing.monthly_rent_cents / 100) }} / month</p>
+            {% if listing.lease_start and listing.lease_end %}
+            <p class="listing-dates">{{ listing.lease_start }} – {{ listing.lease_end }}</p>
+            {% endif %}
+        </div>
+        <div class="listing-card-footer">
+            <a href="/listings/{{ listing.id }}" class="btn btn-sm">View</a>
+            {% if listing.status in ('draft', 'unpublished') %}
+            <a href="/listings/{{ listing.id }}/edit" class="btn btn-sm btn-secondary">Edit</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="?page={{ page - 1 }}" hx-get="/api/listings?page={{ page - 1 }}" hx-target="#listing-grid" hx-push-url="true" class="btn btn-sm">&laquo; Prev</a>
+    {% endif %}
+    <span>Page {{ page }} of {{ pages }} ({{ total }} total)</span>
+    {% if page < pages %}
+    <a href="?page={{ page + 1 }}" hx-get="/api/listings?page={{ page + 1 }}" hx-target="#listing-grid" hx-push-url="true" class="btn btn-sm">Next &raquo;</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+    <p>No listings found.</p>
+    <a href="/listings/new" class="btn btn-primary">Create the first listing</a>
+</div>
+{% endif %}

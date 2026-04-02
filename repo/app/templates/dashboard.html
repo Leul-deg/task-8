@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="container">
+    <h1>Welcome, {{ current_user.full_name or current_user.username }}</h1>
+    <div class="grid">
+        <div class="card" hx-get="/api/listings?per_page=5" hx-trigger="load" hx-target="#recent-listings">
+            <h3>Recent Listings</h3>
+            <div id="recent-listings"><p class="text-muted">Loading...</p></div>
+        </div>
+        <div class="card">
+            <h3>Quick Actions</h3>
+            <a href="/listings/new" class="btn btn-primary">New Listing</a>
+            <a href="/classes/new" class="btn btn-secondary">New Class</a>
+            <a href="/drugs" class="btn btn-secondary">Knowledge Base</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

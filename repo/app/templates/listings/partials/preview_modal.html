@@ -1,0 +1,60 @@
+<div class="modal-overlay" onclick="this.parentElement.innerHTML=''">
+    <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h2>Preview: {{ listing.title }}</h2>
+            <button class="modal-close" onclick="document.getElementById('modal-container').innerHTML=''">&#x2715;</button>
+        </div>
+        <div class="modal-body">
+            <div class="preview-badge-row">
+                <span class="badge badge-{{ listing.status }}">{{ listing.status | replace('_', ' ') | title }}</span>
+            </div>
+
+            <section class="preview-section">
+                <h3>Location</h3>
+                <p>
+                    {{ listing.address_line1 | mask_for_role('address') }}
+                    {% if listing.address_line2 %}<br>{{ listing.address_line2 | mask_for_role('address') }}{% endif %}
+                    <br>{{ listing.city }}, {{ listing.state }} {{ listing.zip_code }}
+                </p>
+            </section>
+
+            <section class="preview-section">
+                <h3>Financials</h3>
+                <dl class="detail-list">
+                    <dt>Monthly Rent</dt><dd>{{ detail.monthly_rent_display }}</dd>
+                    <dt>Deposit</dt><dd>{{ detail.deposit_display }}</dd>
+                </dl>
+            </section>
+
+            <section class="preview-section">
+                <h3>Lease Period</h3>
+                <p>{{ listing.lease_start }} – {{ listing.lease_end }}</p>
+                {% if listing.square_footage %}
+                <p>{{ listing.square_footage }} sq ft</p>
+                {% endif %}
+            </section>
+
+            {% if detail.amenities %}
+            <section class="preview-section">
+                <h3>Amenities</h3>
+                <ul class="amenity-list inline">
+                    {% for amenity in detail.amenities %}
+                    <li>{{ amenity | replace('_', ' ') | title }}</li>
+                    {% endfor %}
+                </ul>
+            </section>
+            {% endif %}
+
+            {% if listing.floor_plan_notes %}
+            <section class="preview-section">
+                <h3>Floor Plan Notes</h3>
+                <p>{{ listing.floor_plan_notes }}</p>
+            </section>
+            {% endif %}
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="document.getElementById('modal-container').innerHTML=''">Close</button>
+            <a href="/listings/{{ listing.id }}" class="btn btn-primary">View Full Listing</a>
+        </div>
+    </div>
+</div>

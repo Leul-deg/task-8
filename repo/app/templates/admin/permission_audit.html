@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Permission Audit{% endblock %}
+{% block content %}
+<div class="container">
+    <h1>Permission Audit Report</h1>
+    <form class="filter-bar" hx-get="/api/admin/permissions/audit" hx-target="#audit-results" hx-trigger="submit">
+        <input type="date" name="start_date" class="form-input">
+        <input type="date" name="end_date" class="form-input">
+        <button type="submit" class="btn btn-primary">Filter</button>
+        <a href="/api/admin/permissions/audit?format=csv" class="btn btn-secondary">Export CSV</a>
+    </form>
+    <div id="audit-results">
+        {% include "admin/partials/audit_table.html" %}
+    </div>
+</div>
+{% endblock %}

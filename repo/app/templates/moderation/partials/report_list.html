@@ -1,0 +1,5 @@
+{% for report in reports %}
+    {% include "moderation/partials/report_card.html" %}
+{% else %}
+    <p class="text-muted text-center">No reports found.</p>
+{% endfor %}

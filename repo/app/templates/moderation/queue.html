@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Moderation Queue{% endblock %}
+{% block content %}
+<div class="container">
+    <h1>Moderation Queue</h1>
+    <div class="filter-bar">
+        <select hx-get="/api/moderation/reports" hx-target="#report-list" name="status" class="form-input">
+            <option value="">All</option>
+            <option value="pending" {% if current_status == 'pending' %}selected{% endif %}>Pending</option>
+            <option value="review_hidden" {% if current_status == 'review_hidden' %}selected{% endif %}>Hidden</option>
+            <option value="review_restored" {% if current_status == 'review_restored' %}selected{% endif %}>Restored</option>
+            <option value="finalized" {% if current_status == 'finalized' %}selected{% endif %}>Finalized</option>
+        </select>
+    </div>
+    <div id="report-list">{% include "moderation/partials/report_list.html" %}</div>
+</div>
+{% endblock %}

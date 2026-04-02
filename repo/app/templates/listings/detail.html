@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block title %}{{ listing.title }} — Listings{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <a href="/listings" class="breadcrumb">&laquo; All Listings</a>
+        <h1>{{ listing.title }}</h1>
+    </div>
+    <div class="header-actions">
+        <button class="btn btn-secondary"
+                hx-get="/api/listings/{{ listing.id }}/preview"
+                hx-target="#modal-container"
+                hx-swap="innerHTML">
+            Preview
+        </button>
+        {% if listing.status in ('draft', 'unpublished') %}
+        <a href="/listings/{{ listing.id }}/edit" class="btn btn-secondary">Edit</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="detail-layout">
+    <section class="detail-main">
+        <div class="detail-section">
+            <h2>Location</h2>
+            <p>{{ listing.address_line1 | mask_for_role('address') }}{% if listing.address_line2 %}<br>{{ listing.address_line2 | mask_for_role('address') }}{% endif %}<br>{{ listing.city }}, {{ listing.state }} {{ listing.zip_code }}</p>
+        </div>
+
+        <div class="detail-section">
+            <h2>Financials</h2>
+            <dl class="detail-list">
+                <dt>Monthly Rent</dt><dd>{{ detail.monthly_rent_display }}</dd>
+                <dt>Deposit</dt><dd>{{ detail.deposit_display }}</dd>
+            </dl>
+        </div>
+
+        <div class="detail-section">
+            <h2>Lease</h2>
+            <dl class="detail-list">
+                <dt>Start</dt><dd>{{ listing.lease_start }}</dd>
+                <dt>End</dt><dd>{{ listing.lease_end }}</dd>
+                {% if listing.square_footage %}
+                <dt>Square Footage</dt><dd>{{ listing.square_footage }} sq ft</dd>
+                {% endif %}
+            </dl>
+        </div>
+
+        {% if detail.amenities %}
+        <div class="detail-section">
+            <h2>Amenities</h2>
+            <ul class="amenity-list">
+                {% for amenity in detail.amenities %}
+                <li>{{ amenity }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if listing.floor_plan_notes %}
+        <div class="detail-section">
+            <h2>Floor Plan Notes</h2>
+            <p>{{ listing.floor_plan_notes }}</p>
+        </div>
+        {% endif %}
+    </section>
+
+    <aside class="detail-sidebar">
+        <div id="status-section">
+            {% include 'listings/partials/status_section.html' %}
+        </div>
+    </aside>
+</div>
+{% endblock %}

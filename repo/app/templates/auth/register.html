@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Register — Clinical Ops Portal{% endblock %}
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <h1>Create Account</h1>
+        <form method="POST" action="/auth/register">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label for="username" class="form-label">Username</label>
+                <input type="text" id="username" name="username" class="form-input" required minlength="3" maxlength="50">
+            </div>
+            <div class="form-group">
+                <label for="full_name" class="form-label">Full Name</label>
+                <input type="text" id="full_name" name="full_name" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label for="email" class="form-label">Email</label>
+                <input type="email" id="email" name="email" class="form-input">
+            </div>
+            <div class="form-group">
+                <label for="password" class="form-label">Password</label>
+                <input type="password" id="password" name="password" class="form-input" required minlength="8">
+                <small class="form-hint">Min 8 chars, 1 uppercase, 1 digit, 1 special character</small>
+            </div>
+            <div class="form-group">
+                <label for="confirm_password" class="form-label">Confirm Password</label>
+                <input type="password" id="confirm_password" name="confirm_password" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label for="org_unit" class="form-label">Organization Unit</label>
+                <select id="org_unit" name="org_unit_id" class="form-input">
+                    <option value="">— Select —</option>
+                    {% for org in org_units %}
+                        <option value="{{ org.id }}">{{ org.name }} ({{ org.level }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Create Account</button>
+        </form>
+        <p class="auth-link">Already have an account? <a href="/auth/login">Sign in</a></p>
+    </div>
+</div>
+{% endblock %}

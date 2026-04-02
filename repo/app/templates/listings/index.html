@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Listings — Clinical Ops Portal{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Property Listings</h1>
+    {% if current_user.is_authenticated %}
+    <a href="/listings/new" class="btn btn-primary">+ New Listing</a>
+    {% endif %}
+</div>
+
+<form class="filter-bar" hx-get="/api/listings" hx-target="#listing-grid" hx-trigger="input delay:400ms from:[name=search], change from:[name=status]" hx-push-url="true">
+    <input type="text" name="search" value="{{ search }}" placeholder="Search by title, city, address…" class="form-input">
+    <select name="status" class="form-select">
+        <option value="">All Statuses</option>
+        {% for s in statuses %}
+        <option value="{{ s.value }}" {% if current_status == s.value %}selected{% endif %}>{{ s.value | replace('_', ' ') | title }}</option>
+        {% endfor %}
+    </select>
+</form>
+
+<div id="listing-grid">
+    {% include 'listings/partials/listing_grid.html' %}
+</div>
+{% endblock %}

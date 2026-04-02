@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block title %}{% if drug %}Edit Drug{% else %}New Drug Entry{% endif %}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <a href="/drugs" class="breadcrumb">&laquo; Drug Formulary</a>
+    <h1>{% if drug %}Edit: {{ drug.generic_name }}{% else %}New Drug Entry{% endif %}</h1>
+</div>
+
+{% set d = form_data if form_data else drug %}
+<form method="POST" action="{% if drug %}/drugs/{{ drug.id }}{% else %}/drugs{% endif %}" class="form-card">
+    <div class="form-row">
+        <div class="form-group">
+            <label for="generic_name">Generic Name <span class="required">*</span></label>
+            <input type="text" id="generic_name" name="generic_name" class="form-input" required
+                   value="{{ d.generic_name if d else '' }}">
+        </div>
+        <div class="form-group">
+            <label for="brand_name">Brand Name</label>
+            <input type="text" id="brand_name" name="brand_name" class="form-input"
+                   value="{{ d.brand_name if d else '' }}">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label for="strength">Strength <span class="required">*</span></label>
+            <input type="text" id="strength" name="strength" class="form-input" required placeholder="e.g. 500mg"
+                   value="{{ d.strength if d else '' }}">
+        </div>
+        <div class="form-group">
+            <label for="form">Form <span class="required">*</span></label>
+            <select id="form" name="form" class="form-select" required>
+                <option value="">— Select —</option>
+                {% for f in drug_forms %}
+                <option value="{{ f.value }}" {% if d and d.form == f.value %}selected{% endif %}>{{ f.value | title }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="ndc_code">NDC Code</label>
+            <input type="text" id="ndc_code" name="ndc_code" class="form-input" placeholder="XXXXX-XXXX-XX"
+                   value="{{ d.ndc_code if d else '' }}">
+        </div>
+    </div>
+    <div class="form-group">
+        <label for="description">Description</label>
+        <textarea id="description" name="description" class="form-input" rows="3">{{ d.description if d else '' }}</textarea>
+    </div>
+    <div class="form-group">
+        <label for="contraindications">Contraindications</label>
+        <textarea id="contraindications" name="contraindications" class="form-input" rows="3">{{ d.contraindications if d else '' }}</textarea>
+    </div>
+    <div class="form-group">
+        <label for="side_effects">Side Effects</label>
+        <textarea id="side_effects" name="side_effects" class="form-input" rows="3">{{ d.side_effects if d else '' }}</textarea>
+    </div>
+    <div class="form-actions">
+        <a href="/drugs{% if drug %}/{{ drug.id }}{% endif %}" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">{% if drug %}Save Changes{% else %}Create Drug Entry{% endif %}</button>
+    </div>
+</form>
+{% endblock %}

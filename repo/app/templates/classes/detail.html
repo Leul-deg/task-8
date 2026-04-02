@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}{{ tc.title }}{% endblock %}
+{% block content %}
+<div class="container">
+    <a href="/classes" class="btn btn-sm btn-secondary">&larr; Back</a>
+    <div class="card" style="margin-top:1rem;">
+        <h1>{{ tc.title }}</h1>
+        <p>{{ tc.description }}</p>
+        <p><strong>Date:</strong> {{ tc.class_date }} &bull; <strong>Location:</strong> {{ tc.location }}</p>
+        <p><strong>Instructor:</strong> {{ tc.instructor.full_name or tc.instructor.username if tc.instructor else '—' }}</p>
+        <p><strong>Attendees:</strong> {{ attendees | length }}/{{ tc.max_attendees }}</p>
+        {% if not is_registered and tc.is_active %}
+            <form method="POST" action="/classes/{{ tc.id }}/register">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-primary">Register for this Class</button>
+            </form>
+        {% elif is_registered %}
+            <span class="badge badge-success">Registered</span>
+        {% endif %}
+    </div>
+
+    {% if is_instructor %}
+    <div class="card" style="margin-top:1rem;">
+        <h2>Mark Attendance</h2>
+        <form method="POST" action="/classes/{{ tc.id }}/attendance">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% for a in attendees %}
+                <label class="checkbox-label">
+                    <input type="checkbox" name="attended_users" value="{{ a.user_id }}" {% if a.attended %}checked{% endif %}>
+                    {{ a.user.full_name or a.user.username if a.user else 'User #' ~ a.user_id }}
+                </label>
+            {% endfor %}
+            <button class="btn btn-primary" style="margin-top:0.5rem;">Save Attendance</button>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="card" style="margin-top:1rem;">
+        <h2>Reviews</h2>
+        {% if total > 0 %}
+            <div class="review-stats">
+                <span class="stat-big">{{ average_rating }}</span>
+                <span class="star-rating">{% for i in range(1, 6) %}{% if i <= average_rating|int %}★{% else %}☆{% endif %}{% endfor %}</span>
+                <span class="text-muted">({{ total }} review{{ 's' if total != 1 }})</span>
+            </div>
+        {% endif %}
+        {% for r in reviews %}
+            <div class="review-card card" style="margin-top:0.5rem;">
+                <div class="review-header">
+                    <strong>{{ r.reviewer_display }}</strong>
+                    <span class="star-rating">{% for i in range(1, 6) %}{% if i <= r.rating %}★{% else %}☆{% endif %}{% endfor %}</span>
+                    <span class="text-muted">{{ r.created_at }}</span>
+                </div>
+                {% if r.tags %}
+                    <div class="pills">{% for t in r.tags %}<span class="pill">{{ t | replace('_', ' ') | title }}</span>{% endfor %}</div>
+                {% endif %}
+                {% if r.comment %}<p>{{ r.comment }}</p>{% endif %}
+                {% if r.coach_reply %}
+                    <div class="coach-reply" style="margin-left:2rem;border-left:3px solid var(--primary);padding-left:1rem;margin-top:0.5rem;">
+                        <strong>Instructor Reply:</strong>
+                        <p>{{ r.coach_reply.body }}</p>
+                    </div>
+                {% elif is_instructor %}
+                    <form method="POST" action="/classes/{{ tc.id }}/reviews/{{ r.id }}/reply" style="margin-left:2rem;margin-top:0.5rem;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <textarea name="body" class="form-input" rows="2" placeholder="Write a reply..." minlength="10" maxlength="2000" required></textarea>
+                        <button class="btn btn-sm btn-secondary" style="margin-top:0.25rem;">Post Reply</button>
+                    </form>
+                {% endif %}
+            </div>
+        {% endfor %}
+        {% if can_review %}
+            <div class="card" style="margin-top:1rem;">
+                <h3>Write a Review</h3>
+                <form method="POST" action="/classes/{{ tc.id }}/reviews">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="form-group">
+                        <label class="form-label">Rating *</label>
+                        <div class="star-input">
+                            {% for i in range(1, 6) %}
+                                <label><input type="radio" name="rating" value="{{ i }}" required> {{ i }}★</label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tags (up to 5)</label>
+                        <div class="checkbox-grid">
+                            {% for tag in config.PREDEFINED_REVIEW_TAGS if config %}
+                                <label class="checkbox-label"><input type="checkbox" name="tags" value="{{ tag }}"> {{ tag | replace('_', ' ') | title }}</label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Comment (20-1000 characters)</label>
+                        <textarea name="comment" class="form-input" rows="4" minlength="20" maxlength="1000"></textarea>
+                    </div>
+                    <button class="btn btn-primary">Submit Review</button>
+                </form>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

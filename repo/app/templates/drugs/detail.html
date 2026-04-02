@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block title %}{{ drug.generic_name }} — Drug Formulary{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <a href="/drugs" class="breadcrumb">&laquo; Drug Formulary</a>
+        <h1>{{ drug.generic_name }} <small class="text-muted">{{ drug.strength }}</small></h1>
+    </div>
+    <span class="badge badge-{{ drug.status }} badge-lg">{{ drug.status | replace('_', ' ') | title }}</span>
+</div>
+
+<div class="detail-layout">
+    <section class="detail-main">
+        <div class="detail-section">
+            <dl class="detail-list">
+                {% if drug.brand_name %}<dt>Brand Name</dt><dd>{{ drug.brand_name }}</dd>{% endif %}
+                <dt>Form</dt><dd><span class="badge badge-form">{{ drug.form }}</span></dd>
+                {% if drug.ndc_code %}<dt>NDC Code</dt><dd>{{ drug.ndc_code }}</dd>{% endif %}
+            </dl>
+        </div>
+        {% if drug.description %}
+        <div class="detail-section"><h2>Description</h2><p>{{ drug.description }}</p></div>
+        {% endif %}
+        {% if drug.contraindications %}
+        <div class="detail-section"><h2>Contraindications</h2><p>{{ drug.contraindications }}</p></div>
+        {% endif %}
+        {% if drug.side_effects %}
+        <div class="detail-section"><h2>Side Effects</h2><p>{{ drug.side_effects }}</p></div>
+        {% endif %}
+    </section>
+
+    <aside class="detail-sidebar">
+        <div class="status-card">
+            {% if drug.status == 'draft' %}
+            <form method="POST" action="/drugs/{{ drug.id }}/submit">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-primary btn-block">Submit for Approval</button>
+            </form>
+            {% elif drug.status == 'pending_approval' %}
+            <form method="POST" action="/drugs/{{ drug.id }}/approve" style="margin-bottom:0.5rem;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-success btn-block">Approve</button>
+            </form>
+            <form method="POST" action="/drugs/{{ drug.id }}/reject">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="text" name="reason" class="form-input" placeholder="Rejection reason" required>
+                <button class="btn btn-danger btn-block" style="margin-top:0.25rem;">Reject</button>
+            </form>
+            {% endif %}
+            {% if drug.approved_at %}
+            <p class="status-meta" style="margin-top:0.75rem;">Approved: {{ drug.approved_at.strftime('%Y-%m-%d') }}</p>
+            {% endif %}
+        </div>
+    </aside>
+</div>
+{% endblock %}
