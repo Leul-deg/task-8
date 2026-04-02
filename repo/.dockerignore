@@ -13,6 +13,4 @@ __pycache__/
 data/
 .git/
 .gitignore
-unit_tests/
-API_tests/
 *.log
