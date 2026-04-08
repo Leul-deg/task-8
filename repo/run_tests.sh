@@ -31,24 +31,28 @@ run_in_docker() {
 
 run_python_test_cmd() {
     local cmd="$TEST_ENV_PREFIX $1"
-    if [ "${RUN_TESTS_FORCE_DOCKER:-0}" = "1" ]; then
+    if [ "${RUN_TESTS_FORCE_LOCAL:-0}" = "1" ]; then
+        eval "$cmd"
+    elif [ "${RUN_TESTS_FORCE_DOCKER:-0}" = "1" ]; then
+        run_in_docker "$cmd"
+    elif has_docker_compose; then
         run_in_docker "$cmd"
     elif has_local_pytest; then
         eval "$cmd"
-    elif has_docker_compose; then
-        run_in_docker "$cmd"
     else
         echo "Neither local pytest nor docker compose is available."
         return 127
     fi
 }
 
-if [ "${RUN_TESTS_FORCE_DOCKER:-0}" = "1" ]; then
+if [ "${RUN_TESTS_FORCE_LOCAL:-0}" = "1" ]; then
+    RUNNER_MODE="local (forced)"
+elif [ "${RUN_TESTS_FORCE_DOCKER:-0}" = "1" ]; then
     RUNNER_MODE="docker (forced)"
-elif has_local_pytest; then
-    RUNNER_MODE="local"
 elif has_docker_compose; then
     RUNNER_MODE="docker"
+elif has_local_pytest; then
+    RUNNER_MODE="local"
 else
     RUNNER_MODE="unavailable"
 fi

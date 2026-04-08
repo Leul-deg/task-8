@@ -1,62 +1,53 @@
 # Audit Report 01 Fix Check
 
-This file summarizes the fixes made during the first remediation cycle.
+This file tracks the issues listed in `audit_report-01.md` and how each one was resolved during the first fix cycle.
 
-## Cycle 01 fixes
+## Issue-by-issue resolution
 
-### 1. Class and listing scope gaps
+### 1. Insecure production defaults and predictable bootstrap credentials
+- **Issue from report 01:** production-like startup allowed placeholder secrets and predictable bootstrap credentials.
+- **Resolution:** configuration validation was hardened, a safer production-oriented path was introduced, and bootstrap/demo behavior was separated from stricter production behavior.
+- **Status:** Resolved
 
-- **Issue:** several class, listing, and moderation paths were not consistently enforcing org-scope and object-level access.
-- **Fix:** added explicit org-scope checks across affected routes and services so users can only act inside accessible org units.
-- **Result:** cross-org reads and mutations are denied consistently.
+### 2. Missing org-scope authorization on critical listing and moderation paths
+- **Issue from report 01:** listing and moderation object/mutation routes did not consistently enforce org scope.
+- **Resolution:** explicit org-scope checks were added across the affected route and service paths so cross-org reads and mutations are denied consistently.
+- **Status:** Resolved
 
-### 2. Drug submit authorization weakness
+### 3. Offline-first read-most requirement not implemented
+- **Issue from report 01:** the service worker cached only static assets and did not support read-most portal screens offline.
+- **Resolution:** offline caching support was added through controlled, explicit cacheable routes and later refined with offline-safe variants so cached screens can be replayed without exposing privileged content.
+- **Status:** Resolved
 
-- **Issue:** submit-for-approval behavior was too permissive.
-- **Fix:** restricted submit actions to the appropriate creator/editor/approver paths and aligned route checks with service-layer rules.
-- **Result:** draft drug transitions now respect RBAC instead of simple login state.
+### 4. Queue and retry architecture was non-operational
+- **Issue from report 01:** queue processing logic existed but had no practical execution path.
+- **Resolution:** queue worker commands and scheduled jobs were wired into the application and deployment flow so queued maintenance/retry work now has an operational path.
+- **Status:** Resolved
 
-### 3. Backup and restore admin operability
+### 5. Duplicate email validation was broken
+- **Issue from report 01:** encrypted email storage made plaintext uniqueness checks ineffective.
+- **Resolution:** deterministic email hashing was added for uniqueness checks while encrypted email storage was preserved for confidentiality.
+- **Status:** Resolved
 
-- **Issue:** backup APIs existed, but the admin console path was incomplete.
-- **Fix:** added the admin backups page plus backup/restore UI flows over the existing services.
-- **Result:** backup and restore behavior is available through the admin interface rather than only through lower-level endpoints.
+### 6. Admin backups console route was missing
+- **Issue from report 01:** the admin UI linked to backups but did not provide the page flow.
+- **Resolution:** the admin backups page and backup/restore UI flows were implemented on top of the existing backup services.
+- **Status:** Resolved
 
-### 4. Queue and scheduled maintenance
+### 7. Status-code and error-mapping inconsistencies
+- **Issue from report 01:** some validation and permission failures returned the wrong status or were collapsed together.
+- **Resolution:** exception handling was normalized so permission failures and validation failures are surfaced more appropriately by type.
+- **Status:** Resolved
 
-- **Issue:** the queue service existed but did not have a practical execution path.
-- **Fix:** wired queue worker commands and default scheduled jobs into the app/compose flow.
-- **Result:** maintenance and retry jobs are no longer just library code; they have an operational path.
+### 8. Appeal resolution deadline was not enforced
+- **Issue from report 01:** the resolution SLA existed as metadata but was not enforced.
+- **Resolution:** appeal resolution now checks the deadline explicitly before allowing late resolution.
+- **Status:** Resolved
 
-### 5. Duplicate email validation
-
-- **Issue:** encrypted email storage made plaintext uniqueness checks unreliable.
-- **Fix:** added deterministic email hashing for uniqueness while keeping encrypted email for storage/display.
-- **Result:** duplicate email registration is correctly blocked without sacrificing at-rest encryption.
-
-### 6. Audit payload sensitivity
-
-- **Issue:** audit payloads could include raw sensitive values.
-- **Fix:** added audit payload sanitization and masked sensitive fields before storage/serialization.
-- **Result:** audit trails remain useful while reducing exposure of emails and addresses.
-
-### 7. Production hardening
-
-- **Issue:** the startup path was too permissive for secrets and bootstrap behavior.
-- **Fix:** hardened config validation, added safer compose behavior, and separated production-oriented settings from demo defaults.
-- **Result:** the code is much less likely to run with unsafe placeholder security values in production-like mode.
-
-### 8. Listing scope dimensions
-
-- **Issue:** listing permission handling was mostly org-based and did not carry an explicit asset-category dimension.
-- **Fix:** added `asset_category` to listings and threaded it into permission evaluation and listing workflows.
-- **Result:** listing policy now reflects more of the prompt’s scope model.
-
-### 9. Offline-safe page variants
-
-- **Issue:** cached authenticated pages risked replaying privileged content.
-- **Fix:** introduced offline-safe cache variants and least-privileged rendering for cached listing pages.
-- **Result:** cached pages can support offline use without exposing privileged controls or unmasked sensitive listing data.
+### 9. Sensitive data exposure in audit payloads
+- **Issue from report 01:** audit payloads could persist raw emails and address values.
+- **Resolution:** audit payload sanitization was added before storage/serialization so sensitive fields are masked in the audit trail.
+- **Status:** Resolved
 
 ## Verification
 
@@ -65,12 +56,4 @@ This file summarizes the fixes made during the first remediation cycle.
 
 ## Cycle 01 outcome
 
-Cycle 01 resolved the original high-impact baseline issues around:
-
-- org/object scope enforcement
-- backup console completeness
-- queue operability
-- duplicate email integrity
-- audit sanitization
-- production hardening
-- offline-safe cached rendering
+All issues listed in `audit_report-01.md` were addressed in code and backed by regression coverage or later targeted verification.
