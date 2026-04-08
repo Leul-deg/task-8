@@ -1,13 +1,54 @@
 # Audit Report 01 Fix Check
 
-This file is the flat submission alias for the latest fix-check from the first audit cycle.
+This document summarizes the remediation arc covered by the first-cycle follow-up audits from `.tmp`:
 
-## Source mapping
+- report 02
+- report 03
+- report 04
 
-- Original source file: `.tmp/clinical_ops_static_auid-04.md`
-- Scope: final recheck for the first-cycle audit stream stored in `.tmp`
-- Purpose: verify that the originally reported issues were fixed or reduced
+## Cycle 01 progression summary
 
-## Notes
+### Report 02 themes
 
-This mapping uses the latest first-cycle fix-check file so the flat submission folder contains the strongest end-state verification for cycle 01.
+- class registration/review mutation scope gaps
+- drug submit-for-approval authorization weakness
+- missing nightly backup scheduling
+- weak default security posture in the demo/deployment path
+
+### Report 03 themes
+
+- empty-org membership edge-case on class/review operations
+- scope enforcement by listing asset category and status
+- need for a clearer hardened production compose path
+
+### Report 04 themes
+
+- offline cached listing pages still leaked privileged body content even after shell anonymization
+
+## Main fixes that landed across cycle 01
+
+- queue worker + scheduled backup wiring added
+- backup admin console route and template added
+- duplicate email validation fixed with deterministic email hashing
+- audit payload sanitization added
+- listing/org/moderation scope checks tightened
+- production secret validation hardened
+- asset category added to listings and used in permission evaluation
+- public registration can no longer self-assign org membership
+- admin/report/audit/org-setting/temp-grant scope checks added
+- offline-safe cached page variants introduced
+- cached listing pages now suppress privileged controls and force masked addresses
+
+## Verification outcome at the end of cycle 01
+
+- local suite passed after fixes
+- Docker-forced `run_tests.sh` path was also verified as passing
+- no remaining material issues were found in the final first-cycle targeted recheck scope
+
+## Final cycle-01 status
+
+Cycle 01 ended with the originally reported defects either:
+
+- fixed in code
+- covered by regression tests
+- or downgraded to runtime-only verification boundaries rather than static defects
