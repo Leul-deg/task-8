@@ -3,7 +3,7 @@ from datetime import date
 from app import create_app
 from app.extensions import db as _db
 from app.models.user import User
-from app.models.organization import OrgUnit
+from app.models.organization import OrgUnit, UserOrgUnit
 from app.models.training import TrainingClass, ClassAttendee
 from app.services.review_service import (
     create_review, update_review, add_coach_reply, update_coach_reply, format_reviewer_name,
@@ -46,6 +46,10 @@ def _setup(db):
     _db.session.flush()
     attendee = ClassAttendee(class_id=tc.id, user_id=student.id, attended=True)
     _db.session.add(attendee)
+    _db.session.add_all([
+        UserOrgUnit(user_id=instructor.id, org_unit_id=org.id, is_primary=True),
+        UserOrgUnit(user_id=student.id, org_unit_id=org.id, is_primary=True),
+    ])
     _db.session.commit()
     return instructor, student, tc
 
@@ -86,6 +90,8 @@ class TestCreateReview:
         non_attendee = User(username='outsider', email='o@t.com')
         non_attendee.set_password('pass')
         _db.session.add(non_attendee)
+        _db.session.flush()
+        _db.session.add(UserOrgUnit(user_id=non_attendee.id, org_unit_id=tc.org_unit_id, is_primary=True))
         _db.session.commit()
         with pytest.raises(PermissionError, match='verified attendees'):
             create_review(tc.id, non_attendee, {'rating': 4, 'comment': 'Trying to review without attending!'})

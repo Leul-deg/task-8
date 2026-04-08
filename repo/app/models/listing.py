@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from app.extensions import db
-from app.utils.constants import ListingStatus
+from app.utils.constants import ListingStatus, ListingAssetCategory
 from app.utils.crypto import app_encrypt, app_decrypt
 
 
@@ -20,6 +20,12 @@ class PropertyListing(db.Model):
     deposit_cents = db.Column(db.Integer, nullable=False)
     lease_start = db.Column(db.Date, nullable=False)
     lease_end = db.Column(db.Date, nullable=False)
+    asset_category = db.Column(
+        db.String(20),
+        nullable=False,
+        default=ListingAssetCategory.HOUSING.value,
+        server_default=ListingAssetCategory.HOUSING.value,
+    )
     status = db.Column(db.String(20), nullable=False, default=ListingStatus.DRAFT.value)
     created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     org_unit_id = db.Column(db.Integer, db.ForeignKey('org_unit.id'), nullable=False)
@@ -90,6 +96,7 @@ class PropertyListing(db.Model):
             'deposit_cents': self.deposit_cents,
             'lease_start': self.lease_start.isoformat() if self.lease_start else None,
             'lease_end': self.lease_end.isoformat() if self.lease_end else None,
+            'asset_category': self.asset_category,
             'status': self.status,
             'created_by_id': self.created_by_id,
             'org_unit_id': self.org_unit_id,

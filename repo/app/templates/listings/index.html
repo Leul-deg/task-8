@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-header">
     <h1>Property Listings</h1>
-    {% if current_user.is_authenticated %}
+    {% if current_user.is_authenticated and not offline_cache_variant %}
     <a href="/listings/new" class="btn btn-primary">+ New Listing</a>
     {% endif %}
 </div>

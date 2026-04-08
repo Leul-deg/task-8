@@ -2,7 +2,7 @@ import pytest
 from app import create_app
 from app.extensions import db as _db
 from app.models.user import User
-from app.services.audit_service import log_action, get_audit_logs
+from app.services.audit_service import log_action, get_audit_logs, serialize_audit_log
 
 
 @pytest.fixture(scope='function')
@@ -57,3 +57,26 @@ class TestAuditService:
     def test_system_action_no_user(self, db):
         entry = log_action(action='system.backup', resource_type='backup')
         assert entry.user_id is None
+
+    def test_sensitive_fields_are_masked_in_stored_payload(self, db):
+        entry = log_action(
+            action='user.register',
+            resource_type='user',
+            new_value={'email': 'alice@example.com', 'full_name': 'Alice Example', 'address_line1': '123 Main St'},
+        )
+        assert 'alice@example.com' not in entry.new_value
+        assert 'Alice Example' not in entry.new_value
+        assert '123 Main St' not in entry.new_value
+
+    def test_serialize_audit_log_masks_existing_payloads(self, db):
+        from app.models.audit import AuditLog
+        entry = AuditLog(
+            action='legacy.audit',
+            resource_type='listing',
+            new_value='{"address_line1": "123 Main St", "email": "legacy@example.com"}',
+        )
+        _db.session.add(entry)
+        _db.session.commit()
+        data = serialize_audit_log(entry)
+        assert '123 Main St' not in data['new_value']
+        assert 'legacy@example.com' not in data['new_value']

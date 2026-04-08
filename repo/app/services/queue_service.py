@@ -73,6 +73,40 @@ def register_job_handler(job_type: str, handler):
     JOB_HANDLERS[job_type] = handler
 
 
+def has_pending_job(job_type: str) -> bool:
+    return JobQueue.query.filter(
+        JobQueue.job_type == job_type,
+        JobQueue.status.in_([
+            JobStatus.PENDING.value,
+            JobStatus.PROCESSING.value,
+        ]),
+    ).first() is not None
+
+
+def has_recent_or_active_job(job_type: str, interval_seconds: int) -> bool:
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=interval_seconds)
+    return JobQueue.query.filter(
+        JobQueue.job_type == job_type,
+        db.or_(
+            JobQueue.status.in_([JobStatus.PENDING.value, JobStatus.PROCESSING.value]),
+            JobQueue.completed_at >= cutoff,
+            JobQueue.created_at >= cutoff,
+        ),
+    ).first() is not None
+
+
+def schedule_default_jobs() -> None:
+    """Ensure recurring maintenance jobs exist so the worker has work to process."""
+    schedules = {
+        'expire_listings': 3600,
+        'expire_grants': 300,
+        'nightly_backup': 86400,
+    }
+    for job_type, interval_seconds in schedules.items():
+        if not has_recent_or_active_job(job_type, interval_seconds):
+            enqueue(job_type, {})
+
+
 def _dispatch_job(job: JobQueue):
     handler = JOB_HANDLERS.get(job.job_type)
     if not handler:

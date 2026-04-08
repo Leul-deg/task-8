@@ -27,6 +27,15 @@ class TestRegister:
         resp = client.post('/auth/register', json={'username': 'weakpw', 'password': 'weak'})
         assert resp.status_code == 400
 
+    def test_register_cannot_self_assign_org_unit(self, client):
+        resp = client.post('/auth/register', json={
+            'username': 'orgassign',
+            'password': VALID_PW,
+            'org_unit_id': 1,
+        })
+        assert resp.status_code == 400
+        assert 'organization' in resp.get_json()['error'].lower()
+
 
 class TestLogin:
     def test_login_success(self, client):

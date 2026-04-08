@@ -10,12 +10,12 @@ from app.utils.constants import (
 
 
 class BaseConfig:
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-prod')
+    SECRET_KEY = os.environ.get('SECRET_KEY')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
     MAX_CONTENT_LENGTH = MAX_CONTENT_LENGTH
-    HMAC_SECRET = os.environ.get('HMAC_SECRET', 'dev-hmac-secret-change-in-prod')
+    HMAC_SECRET = os.environ.get('HMAC_SECRET')
     HMAC_WINDOW_SECONDS = HMAC_WINDOW_SECONDS
     # Login rate limiting — max failures within the window per axis (0 = disabled)
     LOGIN_MAX_ATTEMPTS_PER_IP = 20
@@ -32,6 +32,8 @@ class BaseConfig:
 
 class DevelopmentConfig(BaseConfig):
     DEBUG = True
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-prod')
+    HMAC_SECRET = os.environ.get('HMAC_SECRET', 'dev-hmac-secret-change-in-prod')
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         'DATABASE_URL', 'sqlite:///dev.db'
     )
@@ -39,6 +41,8 @@ class DevelopmentConfig(BaseConfig):
 
 class TestingConfig(BaseConfig):
     TESTING = True
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'test-secret-key')
+    HMAC_SECRET = os.environ.get('HMAC_SECRET', 'test-hmac-secret')
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     WTF_CSRF_ENABLED = False
     LOGIN_MAX_ATTEMPTS_PER_IP = 0

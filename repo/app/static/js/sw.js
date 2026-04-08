@@ -1,4 +1,5 @@
-const CACHE_NAME = 'clinical-ops-v1';
+const STATIC_CACHE_NAME = 'clinical-ops-static-v1';
+const PAGE_CACHE_NAME = 'clinical-ops-pages-v1';
 const STATIC_ASSETS = [
     '/static/css/main.css',
     '/static/js/app.js',
@@ -144,7 +145,7 @@ async function replayQueue() {
 
 self.addEventListener('install', event => {
     event.waitUntil(
-        caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
+        caches.open(STATIC_CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
     );
     self.skipWaiting();
 });
@@ -152,7 +153,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(keys =>
-            Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+            Promise.all(keys.filter(k => ![STATIC_CACHE_NAME, PAGE_CACHE_NAME].includes(k)).map(k => caches.delete(k)))
         )
     );
     self.clients.claim();
@@ -186,10 +187,34 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    // Non-static paths (authenticated pages, API endpoints) go network-only.
-    // Never cache them — prevents cross-user data leakage on shared workstations.
+    // Authenticated pages and API endpoints are network-first. Only responses
+    // explicitly marked safe via X-Offline-Cacheable are stored for offline
+    // fallback. This avoids caching sensitive authenticated HTML by default.
     if (!isStaticAsset(url)) {
-        event.respondWith(fetch(event.request));
+        event.respondWith(
+            fetch(event.request).then(async response => {
+                if (response.ok && response.headers.get('X-Offline-Cacheable') === '1') {
+                    try {
+                        const headers = new Headers(event.request.headers);
+                        headers.set('X-Offline-Cache-Variant', '1');
+                        const cacheRequest = new Request(event.request.url, {
+                            method: event.request.method,
+                            headers,
+                            credentials: 'same-origin',
+                        });
+                        const cacheResponse = await fetch(cacheRequest);
+                        if (cacheResponse.ok) {
+                            caches.open(PAGE_CACHE_NAME).then(cache => cache.put(event.request, cacheResponse.clone()));
+                        }
+                    } catch (_) {}
+                }
+                return response;
+            }).catch(async () => {
+                const cached = await caches.open(PAGE_CACHE_NAME).then(cache => cache.match(event.request));
+                if (cached) return cached;
+                throw new Error('Offline and no cache entry available');
+            })
+        );
         return;
     }
 
@@ -199,7 +224,7 @@ self.addEventListener('fetch', event => {
             const fetchPromise = fetch(event.request).then(response => {
                 if (response.ok) {
                     const clone = response.clone();
-                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+                    caches.open(STATIC_CACHE_NAME).then(cache => cache.put(event.request, clone));
                 }
                 return response;
             }).catch(() => cached);

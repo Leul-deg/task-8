@@ -5,6 +5,7 @@ from app.models.moderation import ModerationReport, ModerationAppeal
 from app.services.moderation_service import (
     report_review, hide_review, restore_review, finalize_report, file_appeal, resolve_appeal
 )
+from app.services.permission_service import user_accessible_org_ids
 from app.utils.decorators import require_permission
 from app.utils.constants import ModerationStatus
 from app.api.middleware import verify_hmac_signature
@@ -16,15 +17,26 @@ def _is_htmx():
     return bool(request.headers.get('HX-Request'))
 
 
+def _report_in_scope(report: ModerationReport) -> bool:
+    return report.review.training_class.org_unit_id in user_accessible_org_ids(current_user)
+
+
+def _appeal_in_scope(appeal: ModerationAppeal) -> bool:
+    return appeal.report.review.training_class.org_unit_id in user_accessible_org_ids(current_user)
+
+
 @moderation_bp.route('/reports', methods=['GET'])
 @verify_hmac_signature
 @login_required
 @require_permission('review.moderate')
 def list_reports():
     status_filter = request.args.get('status', ModerationStatus.PENDING.value)
-    query = ModerationReport.query
+    allowed = user_accessible_org_ids(current_user)
+    from app.models.training import TrainingClass
+    query = ModerationReport.query.join(ModerationReport.review).join(ClassReview.training_class)
+    query = query.filter(TrainingClass.org_unit_id.in_(allowed))
     if status_filter:
-        query = query.filter_by(status=status_filter)
+        query = query.filter(ModerationReport.status == status_filter)
     reports = query.order_by(ModerationReport.created_at.desc()).all()
     if _is_htmx():
         return render_template('moderation/partials/report_list.html', reports=reports)
@@ -41,7 +53,14 @@ def create_report():
     if not review_id or not reason:
         return jsonify({'error': 'review_id and reason are required'}), 400
     review = ClassReview.query.get_or_404(review_id)
-    report = report_review(review, current_user, reason, data.get('keyword_matches'))
+    if review.training_class.org_unit_id not in user_accessible_org_ids(current_user):
+        return jsonify({'error': 'Permission denied'}), 403
+    try:
+        report = report_review(review, current_user, reason, data.get('keyword_matches'))
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 403
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     return jsonify(report.to_dict()), 201
 
 
@@ -51,6 +70,8 @@ def create_report():
 @require_permission('review.moderate')
 def hide(report_id: int):
     report = ModerationReport.query.get_or_404(report_id)
+    if not _report_in_scope(report):
+        return jsonify({'error': 'Permission denied'}), 403
     reason = request.form.get('reason', '') if _is_htmx() else (request.get_json(silent=True) or {}).get('reason')
     report = hide_review(report, current_user, reason)
     if _is_htmx():
@@ -64,6 +85,8 @@ def hide(report_id: int):
 @require_permission('review.moderate')
 def restore(report_id: int):
     report = ModerationReport.query.get_or_404(report_id)
+    if not _report_in_scope(report):
+        return jsonify({'error': 'Permission denied'}), 403
     report = restore_review(report, current_user)
     if _is_htmx():
         return render_template('moderation/partials/report_card.html', report=report)
@@ -76,6 +99,8 @@ def restore(report_id: int):
 @require_permission('review.moderate')
 def finalize(report_id: int):
     report = ModerationReport.query.get_or_404(report_id)
+    if not _report_in_scope(report):
+        return jsonify({'error': 'Permission denied'}), 403
     report = finalize_report(report, current_user)
     if _is_htmx():
         return render_template('moderation/partials/report_card.html', report=report)
@@ -92,6 +117,8 @@ def create_appeal():
     if not report_id or not appeal_text:
         return jsonify({'error': 'report_id and appeal_text are required'}), 400
     report = ModerationReport.query.get_or_404(report_id)
+    if not _report_in_scope(report):
+        return jsonify({'error': 'Permission denied'}), 403
     try:
         appeal = file_appeal(report, current_user, appeal_text)
     except PermissionError as e:
@@ -107,6 +134,8 @@ def create_appeal():
 @require_permission('review.moderate')
 def resolve(appeal_id: int):
     appeal = ModerationAppeal.query.get_or_404(appeal_id)
+    if not _appeal_in_scope(appeal):
+        return jsonify({'error': 'Permission denied'}), 403
     data = request.get_json(silent=True) or {}
     decision = data.get('decision')
     if not decision:

@@ -259,6 +259,14 @@ class TestListingEditAuthorization:
         resp = client.put(f'/api/listings/{lid}', json={'title': 'Hijacked'})
         assert resp.status_code == 401
 
+    def test_cross_org_create_denied(self, client):
+        """mgr_tc1 cannot create a listing under TC2 even with listing.create."""
+        client.post('/auth/login', json={'username': 'mgr_tc1', 'password': 'Manager1!'})
+        with client.application.app_context():
+            org_id = _org_id('TC2')
+        resp = client.post('/api/listings', json=_listing_payload(org_id))
+        assert resp.status_code == 403
+
 
 # ---------------------------------------------------------------------------
 # Listing status change (POST /status) — org-unit isolation
@@ -383,6 +391,13 @@ class TestPageRouteEditAuthorization:
         resp = client.get(f'/listings/{lid}/edit')
         assert resp.status_code == 403
 
+    def test_cross_org_preview_denied(self, client):
+        """mgr_tc2 cannot access the preview fragment for a TC1 listing."""
+        lid = self._create_tc1_listing(client)
+        client.post('/auth/login', json={'username': 'mgr_tc2', 'password': 'Manager2!'})
+        resp = client.get(f'/listings/{lid}/preview')
+        assert resp.status_code == 403
+
     def test_no_permission_edit_form_denied(self, client):
         """User without listing.edit is denied the edit form."""
         lid = self._create_tc1_listing(client)
@@ -411,7 +426,7 @@ class TestLockedListingProtection:
         client.post(f'/api/listings/{lid}/status', json={'status': 'locked'})
 
         resp = client.put(f'/api/listings/{lid}', json={'title': 'Should Fail'})
-        assert resp.status_code == 400
+        assert resp.status_code == 403
 
 
 # ---------------------------------------------------------------------------
@@ -565,3 +580,27 @@ class TestClassListDetailAuthorization:
         client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
         resp = client.get('/classes/99999')
         assert resp.status_code == 404
+
+    def test_cross_org_user_cannot_register_for_class(self, client):
+        """A user outside the class org scope cannot register for the class."""
+        cid = self._create_class(client, 'TC1')
+        client.post('/auth/login', json={'username': 'mgr_tc2', 'password': 'Manager2!'})
+        resp = client.post(f'/classes/{cid}/register', follow_redirects=False)
+        assert resp.status_code == 403
+
+    def test_zero_org_membership_user_cannot_register_for_class(self, client):
+        """A user with no org memberships must be denied class registration."""
+        from app.models.user import User
+        from app.models.user import Role
+        from app.extensions import db as ext_db
+
+        cid = self._create_class(client, 'TC1')
+        with client.application.app_context():
+            user = User(username='noorg', email='noorg@test.com', full_name='No Org')
+            user.set_password('Noorg123!')
+            user.roles.append(Role.query.filter_by(name='staff').one())
+            ext_db.session.add(user)
+            ext_db.session.commit()
+        client.post('/auth/login', json={'username': 'noorg', 'password': 'Noorg123!'})
+        resp = client.post(f'/classes/{cid}/register', follow_redirects=False)
+        assert resp.status_code == 403

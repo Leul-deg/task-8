@@ -175,3 +175,16 @@ class TestListBackups:
         create_backup(src_db, backup_dir)
         result = list_backups(backup_dir)
         assert all(e['filename'].endswith('.enc') for e in result)
+
+
+class TestNightlyBackup:
+    def test_run_nightly_backup_creates_file_and_audit(self, app, tmp_path):
+        from app.services.backup_service import run_nightly_backup
+        from app.models.audit import AuditLog
+
+        db_path = tmp_path / 'nightly.db'
+        app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
+        result = run_nightly_backup()
+        assert result.endswith('.enc')
+        log = AuditLog.query.filter_by(action='backup.nightly').first()
+        assert log is not None

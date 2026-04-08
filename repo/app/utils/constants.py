@@ -17,6 +17,11 @@ class ListingStatus(str, Enum):
     LOCKED = 'locked'
 
 
+class ListingAssetCategory(str, Enum):
+    HOUSING = 'housing'
+    OFFICE = 'office'
+
+
 class DrugForm(str, Enum):
     TABLET = 'tablet'
     CAPSULE = 'capsule'

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Backups{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <div>
+            <a href="/admin" class="breadcrumb">&laquo; Admin</a>
+            <h1>Backups</h1>
+        </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <h3>Run Backup</h3>
+        <p>Create an encrypted SQLite backup and prune files older than the retention window.</p>
+        <form method="POST" action="/admin/backups/run">
+            <button type="submit" class="btn btn-primary">Create Backup</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Available Backups</h3>
+        {% if backups %}
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th>Created</th>
+                    <th>Size</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for backup in backups %}
+                <tr>
+                    <td>{{ backup.filename }}</td>
+                    <td>{{ backup.created }}</td>
+                    <td>{{ backup.size_bytes }} bytes</td>
+                    <td>
+                        <form method="POST" action="/admin/backups/restore" style="display:inline;">
+                            <input type="hidden" name="filename" value="{{ backup.filename }}">
+                            <input type="hidden" name="dry_run" value="1">
+                            <button type="submit" class="btn btn-secondary btn-sm">Dry Run</button>
+                        </form>
+                        <form method="POST" action="/admin/backups/restore" style="display:inline;">
+                            <input type="hidden" name="filename" value="{{ backup.filename }}">
+                            <button type="submit" class="btn btn-danger btn-sm">Restore</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No backups found yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

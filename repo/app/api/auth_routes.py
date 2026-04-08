@@ -2,8 +2,16 @@ from flask import Blueprint, request, jsonify, make_response, render_template, r
 from flask_login import current_user, login_required
 from app.services.auth_service import register_user, authenticate_user, logout_current_user, change_password, RateLimitError
 from app.models.organization import OrgUnit
+from app.api.middleware import verify_hmac_signature
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
+
+
+def _require_hmac_for_json_request():
+    if request.form or request.headers.get('HX-Request'):
+        return None
+    verifier = verify_hmac_signature(lambda: None)
+    return verifier()
 
 
 # ── Browser page routes ────────────────────────────────────────────────────
@@ -27,6 +35,9 @@ def register_page():
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
+    hmac_response = _require_hmac_for_json_request()
+    if hmac_response is not None:
+        return hmac_response
     is_form = bool(request.form)
     data = request.form if is_form else (request.get_json(silent=True) or {})
 
@@ -50,13 +61,14 @@ def register():
             orgs = OrgUnit.query.filter_by(is_active=True).all()
             return render_template('auth/register.html', org_units=orgs), 400
 
-    org_unit_ids = []
     raw_org = data.get('org_unit_id')
     if raw_org:
-        try:
-            org_unit_ids = [int(raw_org)]
-        except (TypeError, ValueError):
-            pass
+        msg = 'Public registration cannot assign organization units'
+        if is_form:
+            flash(msg, 'error')
+            orgs = OrgUnit.query.filter_by(is_active=True).all()
+            return render_template('auth/register.html', org_units=orgs), 400
+        return jsonify({'error': msg}), 400
 
     try:
         user = register_user(
@@ -64,7 +76,7 @@ def register():
             password=password,
             email=email,
             full_name=full_name,
-            org_unit_ids=org_unit_ids or None,
+            org_unit_ids=None,
         )
     except ValueError as e:
         if is_form:
@@ -82,6 +94,9 @@ def register():
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
+    hmac_response = _require_hmac_for_json_request()
+    if hmac_response is not None:
+        return hmac_response
     is_form = bool(request.form)
     data = request.form if is_form else (request.get_json(silent=True) or {})
 
@@ -112,6 +127,9 @@ def login():
 @auth_bp.route('/logout', methods=['POST'])
 @login_required
 def logout():
+    hmac_response = _require_hmac_for_json_request()
+    if hmac_response is not None:
+        return hmac_response
     logout_current_user(user_id=current_user.id)
     session.pop('hmac_client_secret', None)
     is_htmx = request.headers.get('HX-Request')
@@ -130,12 +148,18 @@ def logout():
 @auth_bp.route('/me', methods=['GET'])
 @login_required
 def me():
+    hmac_response = _require_hmac_for_json_request()
+    if hmac_response is not None:
+        return hmac_response
     return jsonify(current_user.to_dict()), 200
 
 
 @auth_bp.route('/change-password', methods=['POST'])
 @login_required
 def change_pw():
+    hmac_response = _require_hmac_for_json_request()
+    if hmac_response is not None:
+        return hmac_response
     data = request.get_json(silent=True) or {}
     try:
         change_password(current_user, data.get('old_password', ''), data.get('new_password', ''))

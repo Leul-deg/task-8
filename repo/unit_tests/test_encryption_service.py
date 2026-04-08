@@ -102,24 +102,30 @@ class TestUserEmailEncryption:
         _db.session.expire(user)
         assert user.email == 'bob@example.com'
 
-    def test_different_ciphertext_per_user(self, encrypted_app):
-        """Two users with the same email get different stored ciphertext (random nonces)."""
+    def test_same_email_reencrypts_to_different_ciphertext_but_same_hash(self, encrypted_app):
+        """Re-setting the same email changes ciphertext but keeps the uniqueness hash stable."""
         from app.models.user import User
         u1 = User(username='carol')
         u1.set_password('Secret1!')
         u1.email = 'same@example.com'
-        u2 = User(username='dave')
-        u2.set_password('Secret1!')
-        u2.email = 'same@example.com'
-        _db.session.add_all([u1, u2])
+        _db.session.add(u1)
         _db.session.commit()
         raw1 = _db.session.execute(
+            _db.text('SELECT email, email_hash FROM user WHERE id = :id'), {'id': u1.id}
+        ).scalar()
+        hash1 = _db.session.execute(
+            _db.text('SELECT email_hash FROM user WHERE id = :id'), {'id': u1.id}
+        ).scalar()
+        u1.email = 'same@example.com'
+        _db.session.commit()
+        raw2 = _db.session.execute(
             _db.text('SELECT email FROM user WHERE id = :id'), {'id': u1.id}
         ).scalar()
-        raw2 = _db.session.execute(
-            _db.text('SELECT email FROM user WHERE id = :id'), {'id': u2.id}
+        hash2 = _db.session.execute(
+            _db.text('SELECT email_hash FROM user WHERE id = :id'), {'id': u1.id}
         ).scalar()
         assert raw1 != raw2
+        assert hash1 == hash2
 
     def test_no_key_stores_plaintext_in_test_mode(self, plain_app):
         from app.models.user import User
@@ -161,3 +167,18 @@ class TestEncryptionKeyEnforcement:
         with app.app_context():
             with pytest.raises(RuntimeError, match='ENCRYPTION_KEY is required'):
                 app_decrypt('some-token')
+
+    def test_validate_security_config_rejects_placeholder_prod_secrets(self):
+        from flask import Flask
+        from app import _validate_security_config
+
+        app = Flask(__name__)
+        app.config['TESTING'] = False
+        app.config['DEBUG'] = False
+        app.config['FLASK_ENV'] = 'production'
+        app.config['SECRET_KEY'] = 'change-me-in-production-secret-key'
+        app.config['HMAC_SECRET'] = 'change-me-in-production-hmac-secret'
+        app.config['ENCRYPTION_KEY'] = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+        with pytest.raises(RuntimeError, match='SECRET_KEY'):
+            with app.app_context():
+                _validate_security_config(app)

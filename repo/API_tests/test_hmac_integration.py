@@ -227,3 +227,16 @@ class TestBrowserHtmxPageRoutes:
         resp = client.get('/listings?per_page=5', headers={'HX-Request': 'true'})
         assert resp.status_code == 200
         assert b'listing-card' in resp.data or b'No listings found' in resp.data
+
+
+class TestJsonAuthEndpointsRequireHmac:
+    def test_json_login_without_hmac_rejected(self, client):
+        resp = client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        assert resp.status_code == 401
+        assert 'Missing' in resp.get_json().get('error', '')
+
+    def test_json_login_with_valid_hmac_succeeds(self, client):
+        body = b'{"username":"admin","password":"admin123"}'
+        headers = _sign('POST', '/auth/login', body=body)
+        resp = client.post('/auth/login', data=body, headers=headers, content_type='application/json')
+        assert resp.status_code == 200

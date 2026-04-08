@@ -467,6 +467,12 @@ class TestOfflineIndicators:
         resp = client.get('/dashboard')
         assert b'app.js' in resp.data
 
+    def test_backups_admin_page_renders(self, client):
+        _login(client)
+        resp = client.get('/admin/backups')
+        assert resp.status_code == 200
+        assert b'Backups' in resp.data
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 10. COACH-REPLY OWNERSHIP + SCOPE ENFORCEMENT
@@ -650,9 +656,9 @@ class TestClassCreationPermission:
             'location': 'Room 5',
             'max_attendees': '25',
             'org_unit_id': str(oid),
-        }, follow_redirects=False)
-        assert resp.status_code == 302
-        assert '/classes/' in resp.headers.get('Location', '')
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'Class date is required' in resp.data
 
     def test_missing_org_unit_returns_validation_error(self, client):
         _login(client)

@@ -1,5 +1,6 @@
 import sys
 import os
+import secrets
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -9,6 +10,10 @@ def seed():
     from app.models.user import User, Role, Permission
     from app.models.organization import OrgUnit, UserOrgUnit
     from app.utils.constants import DEFAULT_ROLES, DEFAULT_PERMISSIONS, OrgUnitLevel
+    env_name = os.environ.get('APP_CONFIG_NAME') or os.environ.get('FLASK_ENV', 'development')
+    allow_default_bootstrap_users = os.environ.get('ALLOW_DEFAULT_BOOTSTRAP_USERS') == '1' or env_name != 'production'
+    bootstrap_admin_password = os.environ.get('BOOTSTRAP_ADMIN_PASSWORD')
+    bootstrap_staff_password = os.environ.get('BOOTSTRAP_STAFF_PASSWORD')
 
     # Seed permissions
     perms = {}
@@ -101,35 +106,40 @@ def seed():
         db.session.add(section)
         db.session.flush()
 
-    # Admin user
-    admin = User.query.filter_by(username='admin').first()
-    if not admin:
-        admin = User(
-            username='admin',
-            email='admin@clinical.local',
-            full_name='System Administrator',
-            display_preference='full_name',
-        )
-        admin.set_password('Admin123!')
-        db.session.add(admin)
-        db.session.flush()
-        admin.roles.append(roles['org_admin'])
-        db.session.add(UserOrgUnit(user_id=admin.id, org_unit_id=campus.id, is_primary=True))
+    if allow_default_bootstrap_users:
+        # Admin user
+        admin = User.query.filter_by(username='admin').first()
+        if not admin:
+            generated_admin_password = bootstrap_admin_password or secrets.token_urlsafe(12)
+            admin = User(
+                username='admin',
+                email='admin@clinical.local',
+                full_name='System Administrator',
+                display_preference='full_name',
+            )
+            admin.set_password(generated_admin_password)
+            db.session.add(admin)
+            db.session.flush()
+            admin.roles.append(roles['org_admin'])
+            db.session.add(UserOrgUnit(user_id=admin.id, org_unit_id=campus.id, is_primary=True))
+            print(f'Bootstrap admin created: username=admin password={generated_admin_password}')
 
-    # Staff user
-    staff_user = User.query.filter_by(username='staff').first()
-    if not staff_user:
-        staff_user = User(
-            username='staff',
-            email='staff@clinical.local',
-            full_name='Staff Member',
-            display_preference='anonymous',
-        )
-        staff_user.set_password('Staff123!')
-        db.session.add(staff_user)
-        db.session.flush()
-        staff_user.roles.append(roles['staff'])
-        db.session.add(UserOrgUnit(user_id=staff_user.id, org_unit_id=campus.id, is_primary=True))
+        # Staff user
+        staff_user = User.query.filter_by(username='staff').first()
+        if not staff_user:
+            generated_staff_password = bootstrap_staff_password or secrets.token_urlsafe(12)
+            staff_user = User(
+                username='staff',
+                email='staff@clinical.local',
+                full_name='Staff Member',
+                display_preference='anonymous',
+            )
+            staff_user.set_password(generated_staff_password)
+            db.session.add(staff_user)
+            db.session.flush()
+            staff_user.roles.append(roles['staff'])
+            db.session.add(UserOrgUnit(user_id=staff_user.id, org_unit_id=campus.id, is_primary=True))
+            print(f'Bootstrap staff created: username=staff password={generated_staff_password}')
 
     db.session.commit()
     print('Seeding complete.')

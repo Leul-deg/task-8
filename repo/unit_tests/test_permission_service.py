@@ -152,6 +152,31 @@ class TestOrgHierarchyPermission:
         _db.session.commit()
         assert has_permission(u, 'listing.create') is True
 
+    def test_listing_edit_scope_checks_asset_category_and_status(self, app):
+        campus, college, dept_a, dept_b = self._make_org_hierarchy()
+        u = User(username='pm_scope', email='pm_scope@t.com')
+        u.set_password('Secret1!')
+        role = Role(name='property_manager', is_system=True)
+        perm = Permission(codename='listing.edit', description='Edit listing', category='listings')
+        _db.session.add_all([u, role, perm])
+        _db.session.flush()
+        role.permissions.append(perm)
+        u.roles.append(role)
+        _db.session.add(UserOrgUnit(user_id=u.id, org_unit_id=dept_a.id, is_primary=True))
+        _db.session.commit()
+        assert has_permission(
+            u, 'listing.edit',
+            org_unit_id=dept_a.id,
+            asset_category='housing',
+            listing_status='draft',
+        ) is True
+        assert has_permission(
+            u, 'listing.edit',
+            org_unit_id=dept_a.id,
+            asset_category='housing',
+            listing_status='published',
+        ) is False
+
     def test_cannot_remove_last_org_admin(self, app):
         """Removing the only active org_admin should raise ValueError."""
         admin_role = Role(name='org_admin', is_system=True)

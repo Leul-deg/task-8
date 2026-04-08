@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, flash, abort
+from flask import Blueprint, render_template, request, redirect, flash, abort, make_response
 from flask_login import login_required, current_user
 from app.models.drug import Drug
 from app.services.drug_service import (
@@ -27,8 +27,12 @@ def index():
     result = search_drugs(q, form_filter=form_filter, status_filter=status_filter, page=page)
     if request.headers.get('HX-Request'):
         return render_template('drugs/partials/drug_results.html', **result, query=q)
-    return render_template('drugs/index.html', **result, query=q,
-                           drug_forms=DrugForm, drug_statuses=DrugStatus, is_admin=privileged)
+    else:
+        resp = make_response(render_template('drugs/index.html', **result, query=q,
+                           drug_forms=DrugForm, drug_statuses=DrugStatus, is_admin=privileged))
+        if not privileged:
+            resp.headers['X-Offline-Cacheable'] = '1'
+        return resp
 
 
 @drug_pages_bp.route('/new')
@@ -67,7 +71,10 @@ def detail(drug_id):
     drug = Drug.query.get_or_404(drug_id)
     if drug.status != 'approved' and not _can_view_unapproved(current_user):
         abort(403)
-    return render_template('drugs/detail.html', drug=drug)
+    resp = make_response(render_template('drugs/detail.html', drug=drug))
+    if drug.status == 'approved' and not _can_view_unapproved(current_user):
+        resp.headers['X-Offline-Cacheable'] = '1'
+    return resp
 
 
 @drug_pages_bp.route('/<int:drug_id>/submit', methods=['POST'])
@@ -76,6 +83,8 @@ def submit(drug_id):
     try:
         submit_for_approval(Drug.query.get_or_404(drug_id), current_user)
         flash('Submitted for approval', 'success')
+    except PermissionError as e:
+        flash(str(e), 'error')
     except ValueError as e:
         flash(str(e), 'error')
     return redirect(f'/drugs/{drug_id}')

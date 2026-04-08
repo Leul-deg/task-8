@@ -50,6 +50,26 @@ class TestListingAPI:
         resp = client.get(f'/api/listings/{listing_id}')
         assert resp.status_code == 200
 
+    def test_staff_receives_masked_address_in_json(self, client, org_unit_id):
+        client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        create_resp = client.post('/api/listings', json=_listing_payload(org_unit_id))
+        listing_id = create_resp.get_json()['id']
+        client.post('/auth/logout')
+        client.post('/auth/login', json={'username': 'staffuser', 'password': 'staffpass'})
+        resp = client.get(f'/api/listings/{listing_id}')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['address_line1'] != '10 Elm St'
+        assert data['address_line1'].startswith('10')
+
+    def test_admin_receives_full_address_in_json(self, client, org_unit_id):
+        client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        create_resp = client.post('/api/listings', json=_listing_payload(org_unit_id))
+        listing_id = create_resp.get_json()['id']
+        resp = client.get(f'/api/listings/{listing_id}')
+        assert resp.status_code == 200
+        assert resp.get_json()['address_line1'] == '10 Elm St'
+
     def test_update_listing(self, client, org_unit_id):
         client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
         create_resp = client.post('/api/listings', json=_listing_payload(org_unit_id))

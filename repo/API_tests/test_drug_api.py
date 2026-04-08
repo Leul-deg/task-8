@@ -70,6 +70,46 @@ class TestDrugAPI:
         assert data['imported'] == 2
         assert data['skipped'] == 0
 
+    def test_create_drug_rejects_invalid_form(self, client):
+        client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        resp = client.post('/api/drugs', json=_drug_payload(form='spray'))
+        assert resp.status_code == 400
+        assert 'Invalid form' in resp.get_json()['error']
+
+    def test_create_drug_rejects_invalid_ndc(self, client):
+        client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        resp = client.post('/api/drugs', json=_drug_payload(ndc_code='bad-ndc'))
+        assert resp.status_code == 400
+        assert 'NDC' in resp.get_json()['error']
+
+    def test_create_drug_rejects_unknown_tag(self, client):
+        client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        resp = client.post('/api/drugs', json=_drug_payload(tags=['unknown-taxonomy']))
+        assert resp.status_code == 400
+        assert 'Unknown taxonomy tag' in resp.get_json()['error']
+
+    def test_submit_for_approval_denied_for_non_editor_non_owner(self, client):
+        client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        drug_id = client.post('/api/drugs', json=_drug_payload(generic_name='SubmitGuard')).get_json()['id']
+        client.post('/auth/logout')
+        client.post('/auth/login', json={'username': 'staffuser', 'password': 'staffpass'})
+        resp = client.post(f'/api/drugs/{drug_id}/submit')
+        assert resp.status_code == 403
+
+    def test_submit_for_approval_allowed_for_creator(self, client):
+        client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        drug_id = client.post('/api/drugs', json=_drug_payload(generic_name='SubmitAllowed')).get_json()['id']
+        resp = client.post(f'/api/drugs/{drug_id}/submit')
+        assert resp.status_code == 200
+        assert resp.get_json()['status'] == 'pending_approval'
+
+    def test_update_drug_rejects_invalid_ndc(self, client):
+        client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        drug_id = client.post('/api/drugs', json=_drug_payload(generic_name='NdcUpdate')).get_json()['id']
+        resp = client.put(f'/api/drugs/{drug_id}', json={'ndc_code': 'bad-ndc'})
+        assert resp.status_code == 400
+        assert 'NDC' in resp.get_json()['error']
+
 
 class TestDrugApprovalVisibility:
     """Non-privileged users must only see approved drugs."""

@@ -1,0 +1,47 @@
+services:
+  web:
+    build: .
+    image: clinical-ops-portal-app
+    ports:
+      - "5000:5000"
+    volumes:
+      - db_data:/app/data
+    environment:
+      - APP_CONFIG_NAME=production
+      - FLASK_ENV=production
+      - DATABASE_URL=sqlite:////app/data/clinical_ops.db
+      - SECRET_KEY=${SECRET_KEY}
+      - HMAC_SECRET=${HMAC_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - ALLOW_DEFAULT_BOOTSTRAP_USERS=0
+    command: >
+      sh -c "
+        flask db-init &&
+        flask db-seed &&
+        gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 120 \"app:create_app('production')\"
+      "
+    restart: unless-stopped
+
+  worker:
+    image: clinical-ops-portal-app
+    depends_on:
+      - web
+    volumes:
+      - db_data:/app/data
+    environment:
+      - APP_CONFIG_NAME=production
+      - FLASK_ENV=production
+      - DATABASE_URL=sqlite:////app/data/clinical_ops.db
+      - SECRET_KEY=${SECRET_KEY}
+      - HMAC_SECRET=${HMAC_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - ALLOW_DEFAULT_BOOTSTRAP_USERS=0
+    command: >
+      sh -c "
+        flask db-init &&
+        python3 -m flask --app app queue-worker --interval 30 --schedule-defaults
+      "
+    restart: unless-stopped
+
+volumes:
+  db_data:

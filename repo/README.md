@@ -16,13 +16,34 @@ docker compose up --build
 ```
 
 Access: http://localhost:5000
-Default admin: `admin` / `Admin123!`
 
 `docker compose up --build` works from a clean checkout without a local `.env` file because
 `docker-compose.yml` includes safe development defaults for `SECRET_KEY`, `HMAC_SECRET`,
 `ENCRYPTION_KEY`, and `DATABASE_URL`. For custom values, copy `.env.example` to `.env`.
+When bootstrap demo users are enabled, temporary credentials are printed once in the container logs
+instead of using fixed defaults.
 
-> **Production deployment**: copy `.env.example` to `.env`, generate strong keys, and set `ENCRYPTION_KEY` to a real base64-encoded 32-byte AES key before running.
+The bundled Compose stack is a local development/demo profile. For production-style deployment,
+set `APP_CONFIG_NAME=production`, provide real secrets, and keep
+`ALLOW_DEFAULT_BOOTSTRAP_USERS=0` so predictable bootstrap credentials are not created.
+
+> **Production deployment**: copy `.env.example` to `.env`, generate strong keys, set
+> `APP_CONFIG_NAME=production`, keep `ALLOW_DEFAULT_BOOTSTRAP_USERS=0`, and supply a real
+> base64-encoded 32-byte `ENCRYPTION_KEY` before running.
+
+### Hardened production compose profile
+
+For a hardened deployment path, use the dedicated production compose file:
+
+```bash
+docker compose -f docker-compose.prod.yml up --build -d
+```
+
+That profile:
+
+- requires explicit `SECRET_KEY`, `HMAC_SECRET`, and `ENCRYPTION_KEY`
+- forces `APP_CONFIG_NAME=production`
+- disables default bootstrap users with `ALLOW_DEFAULT_BOOTSTRAP_USERS=0`
 
 ## Local Development (without Docker)
 
@@ -38,8 +59,6 @@ flask db-init   # creates tables and FTS5 index
 flask db-seed   # loads default roles, permissions, org units, and admin/staff users
 flask run       # starts development server on http://127.0.0.1:5000
 ```
-
-Default admin: `admin` / `Admin123!`
 
 ## Features
 
@@ -65,7 +84,7 @@ pip install -r requirements.txt
 bash run_tests.sh
 ```
 
-172 tests (130 unit + 42 API), all passing.
+`run_tests.sh` always runs unit + API tests. E2E tests run only when Playwright and Chromium are installed; otherwise they are skipped without failing the suite.
 
 ## API Endpoints
 

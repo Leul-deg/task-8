@@ -8,6 +8,12 @@ from app.utils.validators import validate_rating, validate_review_comment, valid
 
 def create_review(class_id: int, reviewer: User, data: dict) -> ClassReview:
     training_class = TrainingClass.query.get_or_404(class_id)
+    from app.services.permission_service import user_accessible_org_ids
+    accessible_orgs = user_accessible_org_ids(reviewer)
+    if not accessible_orgs:
+        raise PermissionError("You do not have access to this class")
+    if training_class.org_unit_id not in accessible_orgs:
+        raise PermissionError("You do not have access to this class")
     attendee = ClassAttendee.query.filter_by(class_id=class_id, user_id=reviewer.id, attended=True).first()
     if not attendee:
         raise PermissionError("Only verified attendees can review a class")
@@ -103,6 +109,8 @@ def create_training_class(data: dict, instructor: User) -> TrainingClass:
     description = data.get('description', '')
 
     class_date = data.get('class_date')
+    if class_date is None:
+        raise ValueError('Class date is required')
     if class_date is not None and not isinstance(class_date, _date):
         raise ValueError('class_date must be a date object')
 
@@ -133,6 +141,12 @@ def create_training_class(data: dict, instructor: User) -> TrainingClass:
 
 def register_for_class(class_id: int, user: User) -> ClassAttendee:
     tc = TrainingClass.query.get_or_404(class_id)
+    from app.services.permission_service import user_accessible_org_ids
+    accessible_orgs = user_accessible_org_ids(user)
+    if not accessible_orgs:
+        raise PermissionError("You do not have access to this class")
+    if tc.org_unit_id not in accessible_orgs:
+        raise PermissionError("You do not have access to this class")
     if not tc.is_active:
         raise ValueError("This class is no longer active")
     count = ClassAttendee.query.filter_by(class_id=class_id).count()

@@ -1,5 +1,5 @@
 from datetime import date as date_type
-from flask import Blueprint, render_template, request, redirect, flash, abort, current_app
+from flask import Blueprint, render_template, request, redirect, flash, abort, current_app, make_response
 from flask_login import login_required, current_user
 from app.models.training import TrainingClass, ClassAttendee, ClassReview
 from app.models.organization import OrgUnit
@@ -24,7 +24,9 @@ def index():
     classes = query.order_by(TrainingClass.class_date.desc()).all()
     if request.headers.get('HX-Request'):
         return render_template('classes/partials/class_list.html', classes=classes)
-    return render_template('classes/index.html', classes=classes, search=search)
+    resp = make_response(render_template('classes/index.html', classes=classes, search=search))
+    resp.headers['X-Offline-Cacheable'] = '1'
+    return resp
 
 
 @class_pages_bp.route('/new')
@@ -101,6 +103,8 @@ def register(class_id):
     try:
         register_for_class(class_id, current_user)
         flash('Registered successfully', 'success')
+    except PermissionError as e:
+        abort(403, description=str(e))
     except ValueError as e:
         flash(str(e), 'error')
     return redirect(f'/classes/{class_id}')
@@ -129,7 +133,9 @@ def submit_review(class_id):
     try:
         create_review(class_id, current_user, data)
         flash('Review submitted', 'success')
-    except (ValueError, PermissionError) as e:
+    except PermissionError as e:
+        abort(403, description=str(e))
+    except ValueError as e:
         flash(str(e), 'error')
     return redirect(f'/classes/{class_id}')
 

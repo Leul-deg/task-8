@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timezone
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -25,6 +26,7 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(64), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(256), nullable=False)
     _email = db.Column('email', db.String(200), nullable=True)
+    email_hash = db.Column(db.String(64), unique=True, nullable=True, index=True)
     _full_name = db.Column('full_name', db.String(200), nullable=True)
     display_preference = db.Column(
         db.String(20),
@@ -67,9 +69,12 @@ class User(UserMixin, db.Model):
     @email.setter
     def email(self, value):
         if value:
+            normalized = self.normalize_email(value)
             self._email = app_encrypt(value)
+            self.email_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
         else:
             self._email = None
+            self.email_hash = None
 
     @property
     def full_name(self):
@@ -89,6 +94,10 @@ class User(UserMixin, db.Model):
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password)
+
+    @staticmethod
+    def normalize_email(value: str) -> str:
+        return value.strip().lower()
 
     def check_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)

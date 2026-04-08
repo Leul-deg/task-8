@@ -4,13 +4,19 @@ from app.models.drug import Drug, TagTaxonomy
 from app.models.user import User
 from app.utils.constants import DrugStatus, DrugForm
 from app.services.audit_service import log_action
+from app.services.permission_service import has_permission
+from app.utils.validators import validate_ndc_code
 
 
 def create_drug(data: dict, created_by: User) -> Drug:
+    form = (data.get('form') or '').strip().lower()
+    if form not in [f.value for f in DrugForm]:
+        raise ValueError(f"Invalid form: {form}")
+    ndc_code = validate_ndc_code(data.get('ndc_code'))
     existing = Drug.query.filter_by(
         generic_name=data['generic_name'],
         strength=data['strength'],
-        form=data['form'],
+        form=form,
     ).first()
     if existing:
         raise ValueError("A drug with the same generic name, strength, and form already exists")
@@ -18,8 +24,8 @@ def create_drug(data: dict, created_by: User) -> Drug:
         generic_name=data['generic_name'],
         brand_name=data.get('brand_name'),
         strength=data['strength'],
-        form=data['form'],
-        ndc_code=data.get('ndc_code'),
+        form=form,
+        ndc_code=ndc_code,
         description=data.get('description'),
         contraindications=data.get('contraindications'),
         side_effects=data.get('side_effects'),
@@ -30,8 +36,9 @@ def create_drug(data: dict, created_by: User) -> Drug:
     db.session.flush()
     for tag_name in data.get('tags', []):
         tag = TagTaxonomy.query.filter_by(name=tag_name).first()
-        if tag:
-            drug.tags.append(tag)
+        if not tag:
+            raise ValueError(f"Unknown taxonomy tag: {tag_name}")
+        drug.tags.append(tag)
     db.session.commit()
     log_action(
         action='drug.create',
@@ -48,7 +55,18 @@ def update_drug(drug: Drug, data: dict, updated_by: User) -> Drug:
     updatable = ['brand_name', 'ndc_code', 'description', 'contraindications', 'side_effects']
     for field in updatable:
         if field in data:
-            setattr(drug, field, data[field])
+            if field == 'ndc_code':
+                setattr(drug, field, validate_ndc_code(data[field]))
+            else:
+                setattr(drug, field, data[field])
+    if 'tags' in data:
+        tags = []
+        for tag_name in data.get('tags', []):
+            tag = TagTaxonomy.query.filter_by(name=tag_name).first()
+            if not tag:
+                raise ValueError(f"Unknown taxonomy tag: {tag_name}")
+            tags.append(tag)
+        drug.tags = tags
     drug.updated_at = datetime.now(timezone.utc)
     db.session.commit()
     log_action(
@@ -65,6 +83,17 @@ def update_drug(drug: Drug, data: dict, updated_by: User) -> Drug:
 def submit_for_approval(drug: Drug, submitted_by: User) -> Drug:
     if drug.status != DrugStatus.DRAFT.value:
         raise ValueError("Only draft drugs can be submitted for approval")
+    role_count = submitted_by.roles.count() if hasattr(submitted_by.roles, 'count') else len(submitted_by.roles)
+    if role_count == 0 and drug.created_by_id == submitted_by.id:
+        pass
+    elif not (
+        has_permission(submitted_by, 'drug.create') or
+        has_permission(submitted_by, 'drug.edit') or
+        has_permission(submitted_by, 'drug.approve')
+    ):
+        raise PermissionError("You do not have permission to submit drug entries")
+    if drug.created_by_id != submitted_by.id and not has_permission(submitted_by, 'drug.approve'):
+        raise PermissionError("Only the creator or an approver can submit this drug")
     drug.status = DrugStatus.PENDING_APPROVAL.value
     drug.updated_at = datetime.now(timezone.utc)
     db.session.commit()

@@ -192,3 +192,31 @@ class TestReviewAPI:
         client.post('/auth/login', json={'username': 'outsider2', 'password': 'outsider123'})
         resp = client.put(f'/api/reviews/{review_id}', json={'rating': 1, 'comment': 'Hijacked!'})
         assert resp.status_code == 403
+
+    def test_same_org_non_author_update_returns_403(self, client, db, training_class_id):
+        """A same-org user who did not author the review gets 403, not 400."""
+        from app.models.user import User, Role
+        from app.models.organization import OrgUnit, UserOrgUnit
+        from app.extensions import db as _db
+
+        org = OrgUnit.query.filter_by(code='TC1').first()
+        peer = User(username='peerstaff', email='peerstaff@test.com', full_name='Peer Staff')
+        peer.set_password('peerstaff123')
+        _db.session.add(peer)
+        _db.session.flush()
+        staff_role = Role.query.filter_by(name='staff').first()
+        peer.roles.append(staff_role)
+        _db.session.add(UserOrgUnit(user_id=peer.id, org_unit_id=org.id, is_primary=True))
+        _db.session.commit()
+
+        client.post('/auth/login', json={'username': 'staffuser', 'password': 'staffpass'})
+        review_resp = client.post(f'/api/classes/{training_class_id}/reviews', json={
+            'rating': 4,
+            'comment': 'Author review for same-org denial test!',
+        })
+        assert review_resp.status_code == 201
+        review_id = review_resp.get_json()['id']
+
+        client.post('/auth/login', json={'username': 'peerstaff', 'password': 'peerstaff123'})
+        resp = client.put(f'/api/reviews/{review_id}', json={'rating': 1, 'comment': 'Hijacked same org'})
+        assert resp.status_code == 403

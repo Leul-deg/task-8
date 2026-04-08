@@ -135,3 +135,18 @@ def list_backups(backup_dir: str) -> list:
                 'created': datetime.fromtimestamp(os.path.getmtime(fp)).isoformat(),
             })
     return backups
+
+
+def run_nightly_backup() -> str:
+    """Run the scheduled backup job using app configuration."""
+    db_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    db_path = db_uri.replace('sqlite:///', '')
+    backup_dir = os.path.join(os.path.dirname(db_path), 'backups')
+    backup_path = create_backup(db_path, backup_dir)
+    prune_old_backups(backup_dir)
+    log_action(
+        action='backup.nightly',
+        resource_type='backup',
+        new_value={'backup_path': backup_path},
+    )
+    return backup_path

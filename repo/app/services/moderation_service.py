@@ -31,6 +31,8 @@ def auto_flag_review(review_id: int):
     result = scan_review_content(review.comment)
     if result['flagged']:
         review.is_visible = False
+        review.is_moderated = True
+        review.moderation_reason = 'Auto-flagged: blocked keywords detected'
         report = ModerationReport(
             review_id=review.id,
             reported_by_id=None,
@@ -164,9 +166,15 @@ def resolve_appeal(
 ) -> ModerationAppeal:
     if decision not in (AppealStatus.UPHELD.value, AppealStatus.OVERTURNED.value):
         raise ValueError("Decision must be 'upheld' or 'overturned'")
+    now = datetime.now(timezone.utc)
+    deadline = appeal.resolution_deadline
+    if deadline and deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+    if deadline and now > deadline:
+        raise ValueError("Appeal resolution deadline has passed")
     appeal.status = decision
     appeal.resolved_by_id = resolved_by.id
-    appeal.resolved_at = datetime.now(timezone.utc)
+    appeal.resolved_at = now
     appeal.resolution_notes = notes
     if decision == AppealStatus.OVERTURNED.value:
         restore_review(appeal.report, resolved_by)

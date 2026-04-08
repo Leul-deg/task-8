@@ -259,6 +259,47 @@ class TestOfflineE2E:
         finally:
             page.context.set_offline(False)
 
+    def test_drugs_page_available_offline_after_cached_visit(self, page, flask_url):
+        """Approved-only drug index is safe to cache and should remain available offline."""
+        login(page, flask_url, username='staffuser', password='staffpass')
+        wait_for_sw(page)
+        page.goto(f'{flask_url}/drugs')
+        page.wait_for_selector('h1', timeout=5000)
+        assert 'Drug Formulary' in page.inner_text('h1')
+        page.context.set_offline(True)
+        try:
+            page.goto(f'{flask_url}/drugs')
+            page.wait_for_selector('h1', timeout=5000)
+            assert 'Drug Formulary' in page.inner_text('h1')
+            nav_text = page.inner_text('.nav-links')
+            assert 'staffuser' not in nav_text.lower()
+            assert 'logout' not in nav_text.lower()
+        finally:
+            page.context.set_offline(False)
+
+    def test_listings_page_available_offline_without_user_identity(self, page, flask_url):
+        """Listings index is cacheable offline, but the cached variant must be
+        least-privileged: no username, no create/edit controls, no full address."""
+        login(page, flask_url)
+        wait_for_sw(page)
+        page.goto(f'{flask_url}/listings')
+        page.wait_for_selector('h1', timeout=5000)
+        page.context.set_offline(True)
+        try:
+            page.goto(f'{flask_url}/listings')
+            page.wait_for_selector('h1', timeout=5000)
+            assert 'Property Listings' in page.inner_text('h1')
+            nav_text = page.inner_text('.nav-links')
+            assert 'admin' not in nav_text.lower()
+            assert 'logout' not in nav_text.lower()
+            body_text = page.inner_text('body')
+            assert '+ New Listing' not in body_text
+            assert page.query_selector('a.btn-secondary:has-text("Edit")') is None
+            assert '1 Test Street' not in body_text
+            assert '*' in body_text
+        finally:
+            page.context.set_offline(False)
+
 
 # ── Cache / state isolation across user switch ───────────────────────────────
 
@@ -331,11 +372,11 @@ class TestCacheIsolationE2E:
         assert count == 0
 
     def test_login_page_clears_stale_caches(self, page, flask_url):
-        """Navigating to the login page (e.g. after session expiry) triggers a
-        proactive CLEAR_ALL so no authenticated data remains.  Static assets
-        may be re-cached immediately by the new page load."""
+        """Loading the login page while unauthenticated triggers CLEAR_ALL so
+        authenticated HTML is not retained in cache."""
         login(page, flask_url)
         wait_for_sw(page)
+        page.context.clear_cookies()
         page.goto(f'{flask_url}/auth/login')
         page.wait_for_timeout(1000)
         cached_urls = page.evaluate("""

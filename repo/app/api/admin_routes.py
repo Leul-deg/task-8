@@ -2,14 +2,14 @@ from flask import Blueprint, request, jsonify, render_template, Response, curren
 from flask_login import login_required, current_user
 from app.extensions import db
 from app.models.user import User, Role, Permission, TempGrant
-from app.models.organization import OrgUnit
+from app.models.organization import OrgUnit, UserOrgUnit
 from app.utils.constants import ReviewerDisplayMode
 from app.models.audit import AuditLog
 from app.services.permission_service import (
     assign_role, remove_role, grant_temp_permission, revoke_temp_grant,
-    get_permission_audit_report, export_permission_audit_csv,
+    get_permission_audit_report, export_permission_audit_csv, user_accessible_org_ids,
 )
-from app.services.audit_service import get_audit_logs
+from app.services.audit_service import get_audit_logs, serialize_audit_log, audit_log_in_scope
 from app.services.backup_service import create_backup, list_backups, prune_old_backups, restore_backup
 from app.utils.decorators import require_permission, require_role
 from app.api.middleware import verify_hmac_signature
@@ -18,13 +18,32 @@ import os
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 
 
+def _accessible_org_ids():
+    return user_accessible_org_ids(current_user)
+
+
+def _user_in_scope(user: User) -> bool:
+    allowed = _accessible_org_ids()
+    if not allowed:
+        return False
+    memberships = {m.org_unit_id for m in user.org_memberships}
+    return bool(memberships & allowed)
+
+
+def _org_in_scope(org: OrgUnit) -> bool:
+    return org.id in _accessible_org_ids()
+
+
 @admin_bp.route('/users', methods=['GET'])
 @verify_hmac_signature
 @login_required
 @require_permission('admin.users')
 def list_users():
     search = request.args.get('search', '').strip()
-    query = User.query
+    allowed = _accessible_org_ids()
+    if not allowed:
+        return jsonify([]), 200
+    query = User.query.join(UserOrgUnit).filter(UserOrgUnit.org_unit_id.in_(allowed)).distinct()
     if search:
         query = query.filter(User.username.ilike(f'%{search}%'))
     users = query.order_by(User.username).all()
@@ -40,6 +59,8 @@ def list_users():
 @require_permission('admin.users')
 def get_user(user_id: int):
     user = User.query.get_or_404(user_id)
+    if not _user_in_scope(user):
+        return jsonify({'error': 'Permission denied'}), 403
     return jsonify(user.to_dict()), 200
 
 
@@ -49,6 +70,8 @@ def get_user(user_id: int):
 @require_permission('admin.roles')
 def add_role(user_id: int):
     user = User.query.get_or_404(user_id)
+    if not _user_in_scope(user):
+        return jsonify({'error': 'Permission denied'}), 403
     if request.headers.get('HX-Request'):
         role_name = request.form.get('role_name', '').strip()
     else:
@@ -68,6 +91,8 @@ def add_role(user_id: int):
 @require_permission('admin.roles')
 def delete_role(user_id: int, role_name: str):
     user = User.query.get_or_404(user_id)
+    if not _user_in_scope(user):
+        return jsonify({'error': 'Permission denied'}), 403
     role = Role.query.filter_by(name=role_name).first_or_404()
     remove_role(user, role, current_user.id)
     return jsonify(user.to_dict()), 200
@@ -79,9 +104,17 @@ def delete_role(user_id: int, role_name: str):
 @require_permission('permission.grant')
 def create_temp_grant(user_id: int):
     user = User.query.get_or_404(user_id)
+    if not _user_in_scope(user):
+        return jsonify({'error': 'Permission denied'}), 403
     data = request.get_json(silent=True) or {}
     permission = Permission.query.filter_by(codename=data.get('permission')).first_or_404()
     hours = data.get('hours', current_app.config.get('TEMP_GRANT_DEFAULT_HOURS', 72))
+    try:
+        hours = int(hours)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'hours must be a positive integer'}), 400
+    if hours <= 0:
+        return jsonify({'error': 'hours must be a positive integer'}), 400
     reason = data.get('reason', '').strip()
     if not reason:
         return jsonify({'error': 'reason is required'}), 400
@@ -95,6 +128,8 @@ def create_temp_grant(user_id: int):
 @require_permission('permission.grant')
 def revoke_grant(grant_id: int):
     grant = TempGrant.query.get_or_404(grant_id)
+    if not _user_in_scope(grant.user):
+        return jsonify({'error': 'Permission denied'}), 403
     revoke_temp_grant(grant, current_user)
     return jsonify(grant.to_dict()), 200
 
@@ -104,7 +139,8 @@ def revoke_grant(grant_id: int):
 @login_required
 @require_permission('admin.org_units')
 def list_org_units():
-    units = OrgUnit.query.order_by(OrgUnit.level, OrgUnit.name).all()
+    allowed = _accessible_org_ids()
+    units = OrgUnit.query.filter(OrgUnit.id.in_(allowed)).order_by(OrgUnit.level, OrgUnit.name).all()
     return jsonify([u.to_dict() for u in units]), 200
 
 
@@ -114,11 +150,16 @@ def list_org_units():
 @require_permission('admin.org_units')
 def create_org_unit():
     data = request.get_json(silent=True) or {}
+    parent_id = data.get('parent_id')
+    if parent_id is not None:
+        parent = OrgUnit.query.get_or_404(parent_id)
+        if not _org_in_scope(parent):
+            return jsonify({'error': 'Permission denied'}), 403
     unit = OrgUnit(
         name=data['name'],
         code=data['code'],
         level=data['level'],
-        parent_id=data.get('parent_id'),
+        parent_id=parent_id,
     )
     db.session.add(unit)
     db.session.commit()
@@ -131,6 +172,8 @@ def create_org_unit():
 @require_permission('admin.org_units')
 def get_org_settings(org_id: int):
     org = OrgUnit.query.get_or_404(org_id)
+    if not _org_in_scope(org):
+        return jsonify({'error': 'Permission denied'}), 403
     return jsonify({'reviewer_display_mode': org.reviewer_display_mode}), 200
 
 
@@ -140,6 +183,8 @@ def get_org_settings(org_id: int):
 @require_permission('admin.org_units')
 def update_org_settings(org_id: int):
     org = OrgUnit.query.get_or_404(org_id)
+    if not _org_in_scope(org):
+        return jsonify({'error': 'Permission denied'}), 403
     data = request.get_json(silent=True) or {}
     mode = data.get('reviewer_display_mode')
     valid_modes = {m.value for m in ReviewerDisplayMode}
@@ -155,6 +200,7 @@ def update_org_settings(org_id: int):
 @login_required
 @require_permission('admin.audit_log')
 def audit_logs():
+    allowed = _accessible_org_ids()
     logs = get_audit_logs(
         resource_type=request.args.get('resource_type'),
         resource_id=request.args.get('resource_id', type=int),
@@ -163,7 +209,8 @@ def audit_logs():
         limit=request.args.get('limit', 100, type=int),
         offset=request.args.get('offset', 0, type=int),
     )
-    return jsonify([log.to_dict() for log in logs]), 200
+    logs = [log for log in logs if audit_log_in_scope(log, allowed)]
+    return jsonify([serialize_audit_log(log) for log in logs]), 200
 
 
 @admin_bp.route('/backup', methods=['POST'])
@@ -219,9 +266,10 @@ def restore_backup_file():
 @login_required
 @require_role('org_admin')
 def permission_audit():
+    allowed = _accessible_org_ids()
     start = request.args.get('start_date')
     end = request.args.get('end_date')
-    entries = get_permission_audit_report(start_date=start, end_date=end)
+    entries = get_permission_audit_report(start_date=start, end_date=end, allowed_org_ids=allowed)
     fmt = request.args.get('format')
     if fmt == 'csv':
         csv_data = export_permission_audit_csv(entries)

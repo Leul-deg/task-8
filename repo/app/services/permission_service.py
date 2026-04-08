@@ -3,10 +3,44 @@ import io
 from datetime import datetime, timezone, timedelta
 from app.extensions import db
 from app.models.user import User, Permission, TempGrant, Role
-from app.services.audit_service import log_action
+from app.services.audit_service import log_action, audit_log_in_scope
+
+LISTING_PERMISSION_SCOPE = {
+    'listing.create': {
+        'asset_categories': {'housing', 'office'},
+        'statuses': None,
+    },
+    'listing.edit': {
+        'asset_categories': {'housing', 'office'},
+        'statuses': {'draft', 'unpublished'},
+    },
+    'listing.publish': {
+        'asset_categories': {'housing', 'office'},
+        'statuses': {'draft', 'pending_review', 'published', 'unpublished', 'expired', 'locked'},
+    },
+}
 
 
-def has_permission(user: User, codename: str, org_unit_id: int | None = None) -> bool:
+def _scope_matches(codename: str, asset_category: str | None, listing_status: str | None) -> bool:
+    rule = LISTING_PERMISSION_SCOPE.get(codename)
+    if not rule:
+        return True
+    allowed_categories = rule.get('asset_categories')
+    allowed_statuses = rule.get('statuses')
+    if asset_category is not None and allowed_categories is not None and asset_category not in allowed_categories:
+        return False
+    if listing_status is not None and allowed_statuses is not None and listing_status not in allowed_statuses:
+        return False
+    return True
+
+
+def has_permission(
+    user: User,
+    codename: str,
+    org_unit_id: int | None = None,
+    asset_category: str | None = None,
+    listing_status: str | None = None,
+) -> bool:
     """Check if a user has a permission via roles or active temp grants.
 
     If org_unit_id is provided, also verify the user has access to that org unit
@@ -15,7 +49,7 @@ def has_permission(user: User, codename: str, org_unit_id: int | None = None) ->
     permission_granted = False
 
     for role in user.roles:
-        if role.permissions.filter_by(codename=codename).first():
+        if role.permissions.filter_by(codename=codename).first() and _scope_matches(codename, asset_category, listing_status):
             permission_granted = True
             break
 
@@ -28,7 +62,7 @@ def has_permission(user: User, codename: str, org_unit_id: int | None = None) ->
             expires_at = grant.expires_at
             if expires_at.tzinfo is None:
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
-            if expires_at > now:
+            if expires_at > now and _scope_matches(codename, asset_category, listing_status):
                 permission_granted = True
 
     if not permission_granted:
@@ -168,6 +202,7 @@ def get_permission_audit_report(
     org_unit_id=None,
     start_date=None,
     end_date=None,
+    allowed_org_ids: set[int] | None = None,
 ) -> list[dict]:
     """Return permission-related audit log entries."""
     from app.models.audit import AuditLog
@@ -177,6 +212,8 @@ def get_permission_audit_report(
     if end_date:
         query = query.filter(AuditLog.timestamp <= end_date)
     entries = query.order_by(AuditLog.timestamp.desc()).all()
+    if allowed_org_ids is not None:
+        entries = [e for e in entries if audit_log_in_scope(e, allowed_org_ids)]
     return [e.to_dict() for e in entries]
 
 

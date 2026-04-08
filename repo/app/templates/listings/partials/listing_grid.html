@@ -7,7 +7,14 @@
             <span class="badge badge-{{ listing.status }}">{{ listing.status | replace('_', ' ') | title }}</span>
         </div>
         <div class="listing-card-body">
-            <p class="listing-address">{{ listing.address_line1 | mask_for_role('address') }}{% if listing.address_line2 %}, {{ listing.address_line2 | mask_for_role('address') }}{% endif %}<br>{{ listing.city }}, {{ listing.state }} {{ listing.zip_code }}</p>
+            <p class="listing-address">
+                {% if offline_cache_variant %}
+                    {{ listing.address_line1 | mask('partial') }}{% if listing.address_line2 %}, {{ listing.address_line2 | mask('partial') }}{% endif %}
+                {% else %}
+                    {{ listing.address_line1 | mask_for_role('address') }}{% if listing.address_line2 %}, {{ listing.address_line2 | mask_for_role('address') }}{% endif %}
+                {% endif %}
+                <br>{{ listing.city }}, {{ listing.state }} {{ listing.zip_code }}
+            </p>
             <p class="listing-rent">${{ '{:,.2f}'.format(listing.monthly_rent_cents / 100) }} / month</p>
             {% if listing.lease_start and listing.lease_end %}
             <p class="listing-dates">{{ listing.lease_start }} – {{ listing.lease_end }}</p>
@@ -15,7 +22,7 @@
         </div>
         <div class="listing-card-footer">
             <a href="/listings/{{ listing.id }}" class="btn btn-sm">View</a>
-            {% if listing.status in ('draft', 'unpublished') %}
+            {% if listing.status in ('draft', 'unpublished') and not offline_cache_variant %}
             <a href="/listings/{{ listing.id }}/edit" class="btn btn-sm btn-secondary">Edit</a>
             {% endif %}
         </div>
@@ -38,6 +45,8 @@
 {% else %}
 <div class="empty-state">
     <p>No listings found.</p>
+    {% if not offline_cache_variant %}
     <a href="/listings/new" class="btn btn-primary">Create the first listing</a>
+    {% endif %}
 </div>
 {% endif %}

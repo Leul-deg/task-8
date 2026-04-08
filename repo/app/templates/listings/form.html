@@ -28,6 +28,17 @@
                 {% endfor %}
             </select>
         </div>
+
+        <div class="form-group">
+            <label for="asset_category">Asset Category <span class="required">*</span></label>
+            <select id="asset_category" name="asset_category" class="form-select" required>
+                {% for category in ['housing', 'office'] %}
+                <option value="{{ category }}" {% if data and data.asset_category == category %}selected{% elif not data and category == 'housing' %}selected{% endif %}>
+                    {{ category | title }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
     </fieldset>
 
     <fieldset>

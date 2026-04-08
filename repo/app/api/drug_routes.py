@@ -77,6 +77,8 @@ def submit(drug_id: int):
     drug = Drug.query.get_or_404(drug_id)
     try:
         drug = submit_for_approval(drug, current_user)
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 403
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     return jsonify(drug.to_dict()), 200

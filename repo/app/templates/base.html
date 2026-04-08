@@ -6,7 +6,7 @@
     <title>{% block title %}Clinical Operations Portal{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <script src="{{ url_for('static', filename='js/htmx.min.js') }}"></script>
-    {% if current_user.is_authenticated and hmac_client_secret %}
+    {% if current_user.is_authenticated and hmac_client_secret and not offline_cache_variant %}
     <meta name="hmac-client-secret" content="{{ hmac_client_secret }}">
     {% endif %}
 </head>
@@ -26,10 +26,14 @@
             <a href="/listings">Listings</a>
             <a href="/drugs">Drug Formulary</a>
             <a href="/classes">Training</a>
-            {% if current_user.roles | selectattr('name', 'equalto', 'org_admin') | list %}
+            {% if current_user.roles | selectattr('name', 'equalto', 'org_admin') | list and not offline_cache_variant %}
                 <a href="/admin">Admin</a>
             {% endif %}
-            <a href="#" hx-post="/auth/logout" hx-target="body">Logout ({{ current_user.username }})</a>
+            {% if offline_cache_variant %}
+                <span class="text-muted">Offline View</span>
+            {% else %}
+                <a href="#" hx-post="/auth/logout" hx-target="body">Logout ({{ current_user.username }})</a>
+            {% endif %}
         {% else %}
             <a href="/auth/login">Login</a>
         {% endif %}

@@ -1,14 +1,24 @@
-from flask import Blueprint, render_template, request, redirect, flash
+from flask import Blueprint, render_template, request, redirect, flash, abort
 from flask_login import login_required, current_user
 from app.models.moderation import ModerationReport, ModerationAppeal
+from app.models.training import ClassReview
 from app.services.moderation_service import (
     report_review, hide_review, restore_review, finalize_report,
     file_appeal, resolve_appeal,
 )
+from app.services.permission_service import user_accessible_org_ids
 from app.utils.decorators import require_permission
 from app.utils.constants import ModerationStatus
 
 moderation_pages_bp = Blueprint('moderation_pages', __name__, url_prefix='/moderation')
+
+
+def _report_in_scope(report: ModerationReport) -> bool:
+    return report.review.training_class.org_unit_id in user_accessible_org_ids(current_user)
+
+
+def _appeal_in_scope(appeal: ModerationAppeal) -> bool:
+    return appeal.report.review.training_class.org_unit_id in user_accessible_org_ids(current_user)
 
 
 @moderation_pages_bp.route('')
@@ -16,9 +26,12 @@ moderation_pages_bp = Blueprint('moderation_pages', __name__, url_prefix='/moder
 @require_permission('review.moderate')
 def queue():
     status_filter = request.args.get('status', ModerationStatus.PENDING.value)
-    query = ModerationReport.query
+    allowed = user_accessible_org_ids(current_user)
+    from app.models.training import TrainingClass
+    query = ModerationReport.query.join(ModerationReport.review).join(ClassReview.training_class)
+    query = query.filter(TrainingClass.org_unit_id.in_(allowed))
     if status_filter:
-        query = query.filter_by(status=status_filter)
+        query = query.filter(ModerationReport.status == status_filter)
     reports = query.order_by(ModerationReport.created_at.desc()).all()
     if request.headers.get('HX-Request'):
         return render_template('moderation/partials/report_list.html', reports=reports)
@@ -30,6 +43,8 @@ def queue():
 @require_permission('review.moderate')
 def hide(report_id):
     report = ModerationReport.query.get_or_404(report_id)
+    if not _report_in_scope(report):
+        abort(403)
     hide_review(report, current_user, request.form.get('reason', ''))
     flash('Review hidden', 'success')
     if request.headers.get('HX-Request'):
@@ -42,6 +57,8 @@ def hide(report_id):
 @require_permission('review.moderate')
 def restore(report_id):
     report = ModerationReport.query.get_or_404(report_id)
+    if not _report_in_scope(report):
+        abort(403)
     restore_review(report, current_user)
     flash('Review restored', 'success')
     if request.headers.get('HX-Request'):
@@ -54,6 +71,8 @@ def restore(report_id):
 @require_permission('review.moderate')
 def finalize(report_id):
     report = ModerationReport.query.get_or_404(report_id)
+    if not _report_in_scope(report):
+        abort(403)
     finalize_report(report, current_user)
     flash('Report finalized', 'success')
     if request.headers.get('HX-Request'):
@@ -65,6 +84,8 @@ def finalize(report_id):
 @login_required
 def appeal(report_id):
     report = ModerationReport.query.get_or_404(report_id)
+    if not _report_in_scope(report):
+        abort(403)
     try:
         file_appeal(report, current_user, request.form.get('appeal_text', ''))
         flash('Appeal filed successfully', 'success')
@@ -78,6 +99,8 @@ def appeal(report_id):
 @require_permission('review.moderate')
 def resolve(appeal_id):
     appeal = ModerationAppeal.query.get_or_404(appeal_id)
+    if not _appeal_in_scope(appeal):
+        abort(403)
     try:
         resolve_appeal(appeal, current_user, request.form.get('decision'), request.form.get('notes'))
         flash('Appeal resolved', 'success')

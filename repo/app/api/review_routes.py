@@ -68,7 +68,9 @@ def update(review_id: int):
     data = request.get_json(silent=True) or {}
     try:
         review = update_review(review, current_user, data)
-    except (ValueError, PermissionError) as e:
+    except PermissionError as e:
+        return jsonify({'error': str(e)}), 403
+    except ValueError as e:
         return jsonify({'error': str(e)}), 400
     return jsonify(review.to_dict()), 200
 

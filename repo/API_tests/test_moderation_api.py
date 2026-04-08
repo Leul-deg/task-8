@@ -30,6 +30,29 @@ def review_id(db, client):
 
 
 class TestModerationAPI:
+    def _create_cross_org_actor(self, db, username='mod_tc2'):
+        from app.models.user import User, Role
+        from app.models.organization import OrgUnit, UserOrgUnit
+        from app.utils.constants import OrgUnitLevel
+        from app.extensions import db as _db
+
+        org = OrgUnit.query.filter_by(code='TC2').first()
+        if not org:
+            org = OrgUnit(name='Other Campus', code='TC2', level=OrgUnitLevel.CAMPUS.value)
+            _db.session.add(org)
+            _db.session.flush()
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            user = User(username=username, email=f'{username}@test.com', full_name='TC2 Moderator')
+            user.set_password('moderator123')
+            _db.session.add(user)
+            _db.session.flush()
+            org_admin = Role.query.filter_by(name='org_admin').first()
+            user.roles.append(org_admin)
+            _db.session.add(UserOrgUnit(user_id=user.id, org_unit_id=org.id, is_primary=True))
+            _db.session.commit()
+        return user
+
     def test_report_review(self, client, review_id):
         client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
         resp = client.post('/api/moderation/reports', json={
@@ -101,3 +124,24 @@ class TestModerationAPI:
             'reason': 'test',
         })
         assert resp.status_code == 401
+
+    def test_cross_org_user_cannot_report_foreign_review(self, client, db, review_id):
+        self._create_cross_org_actor(db, username='reporter_tc2')
+        client.post('/auth/login', json={'username': 'reporter_tc2', 'password': 'moderator123'})
+        resp = client.post('/api/moderation/reports', json={
+            'review_id': review_id,
+            'reason': 'Cross-org report attempt',
+        })
+        assert resp.status_code == 403
+
+    def test_cross_org_moderator_cannot_hide_foreign_report(self, client, db, review_id):
+        self._create_cross_org_actor(db, username='mod_tc2')
+        client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        report_resp = client.post('/api/moderation/reports', json={
+            'review_id': review_id,
+            'reason': 'Spam content',
+        })
+        report_id = report_resp.get_json()['id']
+        client.post('/auth/login', json={'username': 'mod_tc2', 'password': 'moderator123'})
+        resp = client.post(f'/api/moderation/reports/{report_id}/hide', json={'reason': 'cross-org'})
+        assert resp.status_code == 403

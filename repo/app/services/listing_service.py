@@ -3,7 +3,7 @@ from datetime import datetime, timezone, date as date_type
 from app.extensions import db
 from app.models.listing import PropertyListing, ListingAmenity, ListingStatusHistory
 from app.models.user import User
-from app.utils.constants import ListingStatus
+from app.utils.constants import ListingStatus, ListingAssetCategory
 from app.services.audit_service import log_action
 
 ALLOWED_TRANSITIONS = {
@@ -67,6 +67,11 @@ def _validate_listing_data(data: dict) -> dict:
     if lease_end <= lease_start:
         raise ValueError("Lease end date must be after start date")
 
+    asset_category = (data.get('asset_category') or ListingAssetCategory.HOUSING.value).strip().lower()
+    valid_categories = {c.value for c in ListingAssetCategory}
+    if asset_category not in valid_categories:
+        raise ValueError(f"asset_category must be one of: {sorted(valid_categories)}")
+
     return {
         **data,
         'title': title,
@@ -79,6 +84,7 @@ def _validate_listing_data(data: dict) -> dict:
         'deposit_cents': deposit_cents,
         'lease_start': lease_start,
         'lease_end': lease_end,
+        'asset_category': asset_category,
     }
 
 
@@ -97,6 +103,7 @@ def create_listing(data: dict, created_by: User) -> PropertyListing:
         deposit_cents=data['deposit_cents'],
         lease_start=data['lease_start'],
         lease_end=data['lease_end'],
+        asset_category=data['asset_category'],
         status=ListingStatus.DRAFT.value,
         created_by_id=created_by.id,
         org_unit_id=data['org_unit_id'],
@@ -124,7 +131,7 @@ def update_listing(listing: PropertyListing, data: dict, updated_by: User) -> Pr
     updatable = [
         'title', 'address_line1', 'address_line2', 'city', 'state', 'zip_code',
         'floor_plan_notes', 'square_footage', 'monthly_rent_cents', 'deposit_cents',
-        'lease_start', 'lease_end',
+        'lease_start', 'lease_end', 'asset_category',
     ]
     for field in updatable:
         if field in data:
@@ -260,6 +267,7 @@ def get_listing_detail(listing_id: int) -> dict:
 def get_listings(
     org_unit_id=None,
     status=None,
+    asset_category=None,
     min_rent=None,
     max_rent=None,
     search=None,
@@ -274,6 +282,8 @@ def get_listings(
         query = query.filter_by(org_unit_id=org_unit_id)
     if status:
         query = query.filter_by(status=status)
+    if asset_category:
+        query = query.filter_by(asset_category=asset_category)
     if min_rent is not None:
         query = query.filter(PropertyListing.monthly_rent_cents >= min_rent)
     if max_rent is not None:

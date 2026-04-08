@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone, timedelta
 from app import create_app
 from app.extensions import db as _db
 from app.models.user import User
-from app.models.organization import OrgUnit
+from app.models.organization import OrgUnit, UserOrgUnit
 from app.models.training import TrainingClass, ClassAttendee
 from app.services.review_service import create_review
 from app.services.moderation_service import (
@@ -50,6 +50,11 @@ def _setup(db):
     _db.session.flush()
     attendee = ClassAttendee(class_id=tc.id, user_id=student.id, attended=True)
     _db.session.add(attendee)
+    _db.session.add_all([
+        UserOrgUnit(user_id=instructor.id, org_unit_id=org.id, is_primary=True),
+        UserOrgUnit(user_id=student.id, org_unit_id=org.id, is_primary=True),
+        UserOrgUnit(user_id=moderator.id, org_unit_id=org.id, is_primary=True),
+    ])
     _db.session.commit()
     review = create_review(tc.id, student, {'rating': 1, 'comment': 'Truly terrible experience overall!'})
     return student, moderator, review
@@ -80,11 +85,22 @@ class TestAutoFlag:
         assert report is not None
         _db.session.refresh(review)
         assert review.is_visible is False
+        assert review.is_moderated is True
+        assert 'Auto-flagged' in (review.moderation_reason or '')
 
     def test_auto_flag_clean_review_returns_none(self, db):
         student, moderator, review = _setup(db)
         result = auto_flag_review(review.id)
         assert result is None
+
+    def test_auto_flagged_review_cannot_be_edited(self, db):
+        student, moderator, review = _setup(db)
+        review.comment = 'This class was absolutely stupid and a waste of time'
+        _db.session.commit()
+        auto_flag_review(review.id)
+        from app.services.review_service import update_review
+        with pytest.raises(ValueError, match='under moderation'):
+            update_review(review, student, {'comment': 'Trying to rewrite after auto-flagging'})
 
 
 class TestModerationReport:
@@ -171,3 +187,13 @@ class TestAppeal:
         hide_review(report, moderator)
         with pytest.raises(PermissionError, match='Only the review author'):
             file_appeal(report, moderator, 'My review was valid, please reconsider this!')
+
+    def test_resolve_appeal_after_resolution_deadline_raises(self, db):
+        student, moderator, review = _setup(db)
+        report = report_review(review, moderator, 'Spam content here')
+        hide_review(report, moderator)
+        appeal = file_appeal(report, student, 'Please reconsider this decision')
+        appeal.resolution_deadline = datetime.now(timezone.utc) - timedelta(days=1)
+        _db.session.commit()
+        with pytest.raises(ValueError, match='deadline has passed'):
+            resolve_appeal(appeal, moderator, AppealStatus.UPHELD.value, 'Too late')

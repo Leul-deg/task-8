@@ -1,21 +1,57 @@
 services:
   web:
     build: .
+    image: clinical-ops-portal-app
     ports:
       - "5000:5000"
     volumes:
       - db_data:/app/data
     environment:
-      - FLASK_ENV=production
+      - APP_CONFIG_NAME=${APP_CONFIG_NAME:-development}
+      - FLASK_ENV=${FLASK_ENV:-development}
       - DATABASE_URL=sqlite:////app/data/clinical_ops.db
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production-secret-key}
-      - HMAC_SECRET=${HMAC_SECRET:-change-me-in-production-hmac-secret}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+      - SECRET_KEY=${SECRET_KEY:-}
+      - HMAC_SECRET=${HMAC_SECRET:-}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - ALLOW_DEFAULT_BOOTSTRAP_USERS=${ALLOW_DEFAULT_BOOTSTRAP_USERS:-1}
     command: >
       sh -c "
+        [ -f /app/data/.secret_key ] || python3 -c 'import secrets; print(secrets.token_hex(32))' > /app/data/.secret_key &&
+        [ -f /app/data/.hmac_secret ] || python3 -c 'import secrets; print(secrets.token_hex(32))' > /app/data/.hmac_secret &&
+        [ -f /app/data/.encryption_key ] || python3 -c 'import base64, os; print(base64.b64encode(os.urandom(32)).decode())' > /app/data/.encryption_key &&
+        export SECRET_KEY=\"${SECRET_KEY:-$(cat /app/data/.secret_key)}\" &&
+        export HMAC_SECRET=\"${HMAC_SECRET:-$(cat /app/data/.hmac_secret)}\" &&
+        export ENCRYPTION_KEY=\"${ENCRYPTION_KEY:-$(cat /app/data/.encryption_key)}\" &&
         flask db-init &&
         flask db-seed &&
-        gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 120 'app:create_app(\"production\")'
+        gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 120 \"app:create_app('${APP_CONFIG_NAME:-development}')\"
+      "
+    restart: unless-stopped
+
+  worker:
+    image: clinical-ops-portal-app
+    depends_on:
+      - web
+    volumes:
+      - db_data:/app/data
+    environment:
+      - APP_CONFIG_NAME=${APP_CONFIG_NAME:-development}
+      - FLASK_ENV=${FLASK_ENV:-development}
+      - DATABASE_URL=sqlite:////app/data/clinical_ops.db
+      - SECRET_KEY=${SECRET_KEY:-}
+      - HMAC_SECRET=${HMAC_SECRET:-}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - ALLOW_DEFAULT_BOOTSTRAP_USERS=${ALLOW_DEFAULT_BOOTSTRAP_USERS:-1}
+    command: >
+      sh -c "
+        [ -f /app/data/.secret_key ] || python3 -c 'import secrets; print(secrets.token_hex(32))' > /app/data/.secret_key &&
+        [ -f /app/data/.hmac_secret ] || python3 -c 'import secrets; print(secrets.token_hex(32))' > /app/data/.hmac_secret &&
+        [ -f /app/data/.encryption_key ] || python3 -c 'import base64, os; print(base64.b64encode(os.urandom(32)).decode())' > /app/data/.encryption_key &&
+        export SECRET_KEY=\"${SECRET_KEY:-$(cat /app/data/.secret_key)}\" &&
+        export HMAC_SECRET=\"${HMAC_SECRET:-$(cat /app/data/.hmac_secret)}\" &&
+        export ENCRYPTION_KEY=\"${ENCRYPTION_KEY:-$(cat /app/data/.encryption_key)}\" &&
+        flask db-init &&
+        python3 -m flask --app app queue-worker --interval 30 --schedule-defaults
       "
     restart: unless-stopped
 

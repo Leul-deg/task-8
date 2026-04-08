@@ -1,3 +1,4 @@
+import hashlib
 import re
 from datetime import datetime, timezone, timedelta
 from flask import current_app
@@ -57,8 +58,11 @@ def register_user(
     _validate_password_strength(password)
     if User.query.filter_by(username=username).first():
         raise ValueError(f"Username '{username}' is already taken")
-    if email and User.query.filter_by(_email=email).first():
-        raise ValueError(f"Email '{email}' is already registered")
+    normalized_email = User.normalize_email(email) if email else None
+    if normalized_email:
+        email_hash = hashlib.sha256(normalized_email.encode('utf-8')).hexdigest()
+        if User.query.filter_by(email_hash=email_hash).first():
+            raise ValueError(f"Email '{email}' is already registered")
 
     user = User(username=username, email=email, full_name=full_name)
     user.set_password(password)

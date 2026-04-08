@@ -2,7 +2,9 @@ from flask import Flask, jsonify, render_template, request, redirect, g, send_fr
 from flask_login import current_user
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
+import click
 import sqlite3
+import time
 import uuid
 from app.config import config_map
 from app.extensions import db, login_manager, csrf
@@ -15,7 +17,7 @@ def create_app(config_name: str = 'development') -> Flask:
 
     _configure_sqlite_pragmas()
     _init_extensions(app)
-    _validate_encryption_config(app)
+    _validate_security_config(app)
     _register_blueprints(app)
     _register_error_handlers(app)
     _register_before_request_hooks(app)
@@ -39,18 +41,40 @@ def create_app(config_name: str = 'development') -> Flask:
     from app.services.queue_service import register_job_handler
     from app.services.listing_service import expire_stale_listings
     from app.services.permission_service import expire_temp_grants
+    from app.services.backup_service import run_nightly_backup
     register_job_handler('expire_listings', lambda p: expire_stale_listings())
     register_job_handler('expire_grants', lambda p: expire_temp_grants())
+    register_job_handler('nightly_backup', lambda p: run_nightly_backup())
 
     return app
 
 
-def _validate_encryption_config(app: Flask):
-    if not app.config.get('TESTING') and not app.config.get('ENCRYPTION_KEY'):
+def _validate_security_config(app: Flask):
+    if app.config.get('TESTING'):
+        return
+
+    if not app.config.get('ENCRYPTION_KEY'):
         raise RuntimeError(
             'ENCRYPTION_KEY must be set in non-test environments. '
             'Generate one with: python -c "from app.utils.crypto import generate_key; print(generate_key())"'
         )
+
+    env_name = app.config.get('FLASK_ENV') or ''
+    is_production = env_name == 'production' or not app.debug
+    if is_production:
+        weak_values = {
+            '', None,
+            'change-me-in-production-secret-key',
+            'change-me-in-production-hmac-secret',
+            'local-dev-secret-key',
+            'local-dev-hmac-secret',
+            'dev-secret-key-change-in-prod',
+            'dev-hmac-secret-change-in-prod',
+        }
+        if app.config.get('SECRET_KEY') in weak_values:
+            raise RuntimeError('SECRET_KEY must be explicitly set to a non-placeholder value in production')
+        if app.config.get('HMAC_SECRET') in weak_values:
+            raise RuntimeError('HMAC_SECRET must be explicitly set to a non-placeholder value in production')
 
 
 def _configure_sqlite_pragmas():
@@ -183,6 +207,10 @@ def _register_template_filters(app: Flask):
             return {'hmac_client_secret': session.get('hmac_client_secret', '')}
         return {'hmac_client_secret': ''}
 
+    @app.context_processor
+    def inject_offline_cache_variant():
+        return {'offline_cache_variant': request.headers.get('X-Offline-Cache-Variant') == '1'}
+
 
 def _register_cli(app: Flask):
     @app.cli.command('db-init')
@@ -210,6 +238,34 @@ def _register_cli(app: Flask):
         path = create_backup(db_path, backup_dir)
         prune_old_backups(backup_dir)
         print(f'Backup created: {path}')
+
+    @app.cli.command('queue-process-once')
+    def queue_process_once():
+        """Process any pending jobs once."""
+        from app.services.queue_service import process_pending_jobs, schedule_default_jobs
+        schedule_default_jobs()
+        process_pending_jobs()
+        print('Queue processed once.')
+
+    @app.cli.command('queue-worker')
+    @click.option('--interval', default=30, type=int, show_default=True)
+    @click.option('--schedule-defaults', is_flag=True, default=False)
+    def queue_worker(interval: int, schedule_defaults: bool):
+        """Run a simple queue worker loop."""
+        from app.services.queue_service import process_pending_jobs, schedule_default_jobs
+        print(f'Queue worker started (interval={interval}s, schedule_defaults={schedule_defaults}).')
+        while True:
+            if schedule_defaults:
+                schedule_default_jobs()
+            process_pending_jobs()
+            time.sleep(interval)
+
+    @app.cli.command('schedule-default-jobs')
+    def schedule_default_jobs_cli():
+        """Ensure recurring maintenance jobs are present in the queue."""
+        from app.services.queue_service import schedule_default_jobs
+        schedule_default_jobs()
+        print('Default jobs scheduled.')
 
 
 def _create_fts_table(db_instance):
