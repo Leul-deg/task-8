@@ -1,53 +1,81 @@
 # Audit Report 02 Fix Check
 
-This document summarizes the remediation arc covered by the second-cycle follow-up audits from `.tmp2`:
+This file summarizes the fixes made during the second remediation cycle.
 
-- report 02
-- report 03
-- report 04
+## Cycle 02 fixes
 
-## Cycle 02 progression summary
+### 1. Public registration org assignment
 
-### Report 02 themes
+- **Issue:** self-registration still allowed a new user to choose an org unit directly.
+- **Fix:** removed public org assignment from registration and rejected `org_unit_id` in the registration handler.
+- **Result:** org membership creation is no longer user-supplied through public signup.
 
-- self-registration still allowed org assignment
-- admin audit/report scope gaps remained
-- temp-grant revoke scoping remained incomplete
-- offline support was too narrow
+### 2. Admin audit and reporting scope
 
-### Report 03 themes
+- **Issue:** scoped admins could still see global audit/report data.
+- **Fix:** added org-aware filtering to audit-log and permission-audit flows.
+- **Result:** reporting data now follows the same org boundaries as other protected admin operations.
 
-- approved drug pages became offline-cacheable
-- shell identity leakage in cached views was reduced
-- remaining concern narrowed to cached page-body content and least-privileged rendering
+### 3. Temp-grant revoke scoping
 
-### Report 04 themes
+- **Issue:** revocation could target grants that belonged to out-of-scope users.
+- **Fix:** added scope validation on the grant’s target user before revoke is allowed.
+- **Result:** scoped admins cannot mutate temp grants outside their org boundary.
 
-- cached listing pages still needed least-privileged body rendering
-- shell anonymization alone was not enough
+### 4. Listing JSON masking
 
-## Main fixes that landed across cycle 02
+- **Issue:** listing addresses were masked in HTML but exposed through JSON APIs.
+- **Fix:** applied role-aware masking in listing API serialization as well.
+- **Result:** non-privileged users now get masked listing addresses consistently across HTML and JSON.
 
-- public registration now rejects org assignment
-- admin audit-log and permission-audit results are org-scoped
-- out-of-scope temp-grant revocation is denied
-- listing JSON masking is role-aware
-- auto-flagged reviews are marked moderated and become non-editable
-- drug create/update validation now rejects invalid form/NDC/tag input
-- JSON auth endpoints require HMAC in non-test mode
-- class creation now explicitly requires `class_date`
-- offline-safe cache variants now scrub privileged shell content
-- cached listing pages now also downgrade body content:
-  - masked addresses
-  - no create button
-  - no edit control
+### 5. Auto-flag moderation consistency
 
-## Verification outcome at the end of cycle 02
+- **Issue:** auto-flagged reviews were hidden but not fully marked moderated.
+- **Fix:** auto-flagging now sets the same moderation state used by manual moderation flows.
+- **Result:** hidden auto-flagged reviews are non-editable and auditable in the same way as manually moderated reviews.
 
-- the later targeted re-audits found no new material auth/admin defects in scope
-- offline cached listings now had explicit E2E assertions for least-privileged rendering
-- the final targeted recheck concluded the rechecked scope had no remaining material issues
+### 6. Drug validation
 
-## Final cycle-02 status
+- **Issue:** create/update paths did not fully reject invalid forms, NDCs, or unknown taxonomy tags.
+- **Fix:** added service-layer validation for those fields and rejected unknown taxonomy tags explicitly.
+- **Result:** drug data integrity is stronger for both API and page-backed flows.
 
-Cycle 02 closed the remaining scoped-admin, registration-boundary, JSON-masking, and offline cached-body issues that were still open after the first cycle.
+### 7. JSON auth signing
+
+- **Issue:** JSON auth endpoints were outside the HMAC boundary.
+- **Fix:** non-form JSON auth requests now require HMAC, while browser form auth remains session/CSRF based.
+- **Result:** the signed-API contract is more consistent without breaking browser login/register flows.
+
+### 8. Explicit class-date validation
+
+- **Issue:** class creation relied too much on downstream persistence failure for missing dates.
+- **Fix:** class creation now validates `class_date` explicitly as required input.
+- **Result:** users receive proper validation behavior instead of indirect database failure paths.
+
+### 9. Offline-safe cache variants
+
+- **Issue:** authenticated cached pages initially removed username/logout in the shell but could still preserve privileged page-body content.
+- **Fix:** introduced explicit offline-safe variants and then tightened them further for listings:
+  - shell content is anonymized
+  - address fields are forcibly masked
+  - privileged controls like create/edit actions are hidden
+- **Result:** offline-cached pages preserve read-most usability without replaying privileged-only listing visibility.
+
+## Verification
+
+- targeted re-audits confirmed the major auth/admin defects were closed
+- E2E coverage now asserts least-privileged rendering for cached offline listings
+- the repo test suite stayed green after the cycle-02 fixes
+
+## Cycle 02 outcome
+
+Cycle 02 closed the remaining issues around:
+
+- registration boundary control
+- scoped admin reporting
+- temp-grant revoke scope
+- JSON/API masking consistency
+- moderation-state consistency
+- stronger drug validation
+- JSON auth HMAC coverage
+- safer offline cached-content rendering

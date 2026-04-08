@@ -1,54 +1,76 @@
 # Audit Report 01 Fix Check
 
-This document summarizes the remediation arc covered by the first-cycle follow-up audits from `.tmp`:
+This file summarizes the fixes made during the first remediation cycle.
 
-- report 02
-- report 03
-- report 04
+## Cycle 01 fixes
 
-## Cycle 01 progression summary
+### 1. Class and listing scope gaps
 
-### Report 02 themes
+- **Issue:** several class, listing, and moderation paths were not consistently enforcing org-scope and object-level access.
+- **Fix:** added explicit org-scope checks across affected routes and services so users can only act inside accessible org units.
+- **Result:** cross-org reads and mutations are denied consistently.
 
-- class registration/review mutation scope gaps
-- drug submit-for-approval authorization weakness
-- missing nightly backup scheduling
-- weak default security posture in the demo/deployment path
+### 2. Drug submit authorization weakness
 
-### Report 03 themes
+- **Issue:** submit-for-approval behavior was too permissive.
+- **Fix:** restricted submit actions to the appropriate creator/editor/approver paths and aligned route checks with service-layer rules.
+- **Result:** draft drug transitions now respect RBAC instead of simple login state.
 
-- empty-org membership edge-case on class/review operations
-- scope enforcement by listing asset category and status
-- need for a clearer hardened production compose path
+### 3. Backup and restore admin operability
 
-### Report 04 themes
+- **Issue:** backup APIs existed, but the admin console path was incomplete.
+- **Fix:** added the admin backups page plus backup/restore UI flows over the existing services.
+- **Result:** backup and restore behavior is available through the admin interface rather than only through lower-level endpoints.
 
-- offline cached listing pages still leaked privileged body content even after shell anonymization
+### 4. Queue and scheduled maintenance
 
-## Main fixes that landed across cycle 01
+- **Issue:** the queue service existed but did not have a practical execution path.
+- **Fix:** wired queue worker commands and default scheduled jobs into the app/compose flow.
+- **Result:** maintenance and retry jobs are no longer just library code; they have an operational path.
 
-- queue worker + scheduled backup wiring added
-- backup admin console route and template added
-- duplicate email validation fixed with deterministic email hashing
-- audit payload sanitization added
-- listing/org/moderation scope checks tightened
-- production secret validation hardened
-- asset category added to listings and used in permission evaluation
-- public registration can no longer self-assign org membership
-- admin/report/audit/org-setting/temp-grant scope checks added
-- offline-safe cached page variants introduced
-- cached listing pages now suppress privileged controls and force masked addresses
+### 5. Duplicate email validation
 
-## Verification outcome at the end of cycle 01
+- **Issue:** encrypted email storage made plaintext uniqueness checks unreliable.
+- **Fix:** added deterministic email hashing for uniqueness while keeping encrypted email for storage/display.
+- **Result:** duplicate email registration is correctly blocked without sacrificing at-rest encryption.
 
-- local suite passed after fixes
-- Docker-forced `run_tests.sh` path was also verified as passing
-- no remaining material issues were found in the final first-cycle targeted recheck scope
+### 6. Audit payload sensitivity
 
-## Final cycle-01 status
+- **Issue:** audit payloads could include raw sensitive values.
+- **Fix:** added audit payload sanitization and masked sensitive fields before storage/serialization.
+- **Result:** audit trails remain useful while reducing exposure of emails and addresses.
 
-Cycle 01 ended with the originally reported defects either:
+### 7. Production hardening
 
-- fixed in code
-- covered by regression tests
-- or downgraded to runtime-only verification boundaries rather than static defects
+- **Issue:** the startup path was too permissive for secrets and bootstrap behavior.
+- **Fix:** hardened config validation, added safer compose behavior, and separated production-oriented settings from demo defaults.
+- **Result:** the code is much less likely to run with unsafe placeholder security values in production-like mode.
+
+### 8. Listing scope dimensions
+
+- **Issue:** listing permission handling was mostly org-based and did not carry an explicit asset-category dimension.
+- **Fix:** added `asset_category` to listings and threaded it into permission evaluation and listing workflows.
+- **Result:** listing policy now reflects more of the prompt’s scope model.
+
+### 9. Offline-safe page variants
+
+- **Issue:** cached authenticated pages risked replaying privileged content.
+- **Fix:** introduced offline-safe cache variants and least-privileged rendering for cached listing pages.
+- **Result:** cached pages can support offline use without exposing privileged controls or unmasked sensitive listing data.
+
+## Verification
+
+- local suite passed after the cycle-01 fixes
+- Docker-forced `run_tests.sh` was also verified as passing
+
+## Cycle 01 outcome
+
+Cycle 01 resolved the original high-impact baseline issues around:
+
+- org/object scope enforcement
+- backup console completeness
+- queue operability
+- duplicate email integrity
+- audit sanitization
+- production hardening
+- offline-safe cached rendering
