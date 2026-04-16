@@ -11,6 +11,8 @@ def app():
     application = create_app('testing')
     with application.app_context():
         _db.create_all()
+        from app import _create_fts_table
+        _create_fts_table(_db)
         _seed_base_data()
         yield application
         _db.session.remove()

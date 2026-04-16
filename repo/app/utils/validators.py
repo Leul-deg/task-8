@@ -70,9 +70,11 @@ def validate_zip_code(zip_code: str) -> str:
 
 
 def validate_ndc_code(ndc: str | None) -> str | None:
-    if ndc is None:
+    if not ndc:
         return None
     ndc = ndc.strip()
+    if not ndc:
+        return None
     if not re.match(r'^\d{4,5}-\d{3,4}-\d{1,2}$', ndc):
         raise ValueError("Invalid NDC code format")
     return ndc

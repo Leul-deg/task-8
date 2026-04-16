@@ -41,8 +41,8 @@ class DevelopmentConfig(BaseConfig):
 
 class TestingConfig(BaseConfig):
     TESTING = True
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'test-secret-key')
-    HMAC_SECRET = os.environ.get('HMAC_SECRET', 'test-hmac-secret')
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'test-secret-key'
+    HMAC_SECRET = os.environ.get('HMAC_SECRET') or 'test-hmac-secret'
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     WTF_CSRF_ENABLED = False
     LOGIN_MAX_ATTEMPTS_PER_IP = 0

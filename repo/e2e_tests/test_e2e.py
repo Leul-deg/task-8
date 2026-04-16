@@ -14,6 +14,45 @@ import pytest
 import re
 
 
+# ── Service-worker helpers ─────────────────────────────────────────────────────
+
+def _get_active_sw(page):
+    """Return the first active service worker for this browser context.
+
+    After ``wait_for_sw`` the SW is already controlling the page; give the
+    Playwright internal bookkeeping a brief moment to surface it.
+    Note: ``service_workers`` is a property in Playwright Python, not a method.
+    """
+    workers = page.context.service_workers
+    if not workers:
+        page.wait_for_timeout(500)
+        workers = page.context.service_workers
+    return workers[0] if workers else None
+
+
+# JS snippets injected into the service-worker context to simulate
+# an offline network condition without relying on CDP offline emulation
+# (which only affects the page target, not the SW target, in Playwright's
+# headless Chromium).
+_SW_PATCH_OFFLINE = """
+() => {
+    if (!globalThis.__origFetch) {
+        globalThis.__origFetch = self.fetch.bind(self);
+    }
+    self.fetch = () => Promise.reject(new TypeError('Network request failed'));
+}
+"""
+
+_SW_RESTORE_ONLINE = """
+() => {
+    if (globalThis.__origFetch) {
+        self.fetch = globalThis.__origFetch;
+        delete globalThis.__origFetch;
+    }
+}
+"""
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def login(page, base, username='admin', password='admin123'):
@@ -213,10 +252,18 @@ class TestOfflineE2E:
         assert page.is_hidden('#offline-indicator')
 
     def test_sw_returns_queued_response_when_offline(self, page, flask_url):
-        """POST through the SW while offline must return 202 { queued: true }."""
+        """POST through the SW while offline must return 202 { queued: true }.
+
+        Neither page.context.set_offline() nor context.route() reaches the
+        service-worker's own fetch() calls in Playwright's headless Chromium;
+        only patching self.fetch inside the SW context reliably simulates a
+        network failure there.
+        """
         login(page, flask_url)
         wait_for_sw(page)
-        page.context.set_offline(True)
+        sw = _get_active_sw(page)
+        assert sw is not None, 'Service worker must be active after wait_for_sw'
+        sw.evaluate(_SW_PATCH_OFFLINE)
         try:
             result = page.evaluate("""
                 async () => {
@@ -231,14 +278,16 @@ class TestOfflineE2E:
             assert result['status'] == 202
             assert result['body']['queued'] is True
         finally:
-            page.context.set_offline(False)
+            sw.evaluate(_SW_RESTORE_ONLINE)
 
     def test_queue_indicator_shown_after_offline_write(self, page, flask_url):
         """After a write is queued, the SW broadcasts QUEUE_UPDATE and the
         queue banner becomes visible."""
         login(page, flask_url)
         wait_for_sw(page)
-        page.context.set_offline(True)
+        sw = _get_active_sw(page)
+        assert sw is not None, 'Service worker must be active after wait_for_sw'
+        sw.evaluate(_SW_PATCH_OFFLINE)
         try:
             # Await the fetch so the SW has fully processed it (stored in IndexedDB,
             # broadcast QUEUE_UPDATE) before we check the DOM.
@@ -257,7 +306,7 @@ class TestOfflineE2E:
             )
             assert page.is_visible('#queue-indicator')
         finally:
-            page.context.set_offline(False)
+            sw.evaluate(_SW_RESTORE_ONLINE)
 
     def test_drugs_page_available_offline_after_cached_visit(self, page, flask_url):
         """Approved-only drug index is safe to cache and should remain available offline."""
@@ -266,7 +315,17 @@ class TestOfflineE2E:
         page.goto(f'{flask_url}/drugs')
         page.wait_for_selector('h1', timeout=5000)
         assert 'Drug Formulary' in page.inner_text('h1')
-        page.context.set_offline(True)
+        # Wait until the SW has stored the anonymous cache variant.
+        page.wait_for_function("""
+            async () => {
+                const cache = await caches.open('clinical-ops-pages-v1');
+                return (await cache.match(window.location.href)) !== undefined;
+            }
+        """, timeout=5000)
+        # Patch SW fetch to simulate offline; the SW will now serve from cache.
+        sw = _get_active_sw(page)
+        assert sw is not None, 'Service worker must be active after wait_for_sw'
+        sw.evaluate(_SW_PATCH_OFFLINE)
         try:
             page.goto(f'{flask_url}/drugs')
             page.wait_for_selector('h1', timeout=5000)
@@ -275,7 +334,7 @@ class TestOfflineE2E:
             assert 'staffuser' not in nav_text.lower()
             assert 'logout' not in nav_text.lower()
         finally:
-            page.context.set_offline(False)
+            sw.evaluate(_SW_RESTORE_ONLINE)
 
     def test_listings_page_available_offline_without_user_identity(self, page, flask_url):
         """Listings index is cacheable offline, but the cached variant must be
@@ -284,7 +343,17 @@ class TestOfflineE2E:
         wait_for_sw(page)
         page.goto(f'{flask_url}/listings')
         page.wait_for_selector('h1', timeout=5000)
-        page.context.set_offline(True)
+        # Wait until the SW has stored the anonymous cache variant.
+        page.wait_for_function("""
+            async () => {
+                const cache = await caches.open('clinical-ops-pages-v1');
+                return (await cache.match(window.location.href)) !== undefined;
+            }
+        """, timeout=5000)
+        # Patch SW fetch to simulate offline; the SW will now serve from cache.
+        sw = _get_active_sw(page)
+        assert sw is not None, 'Service worker must be active after wait_for_sw'
+        sw.evaluate(_SW_PATCH_OFFLINE)
         try:
             page.goto(f'{flask_url}/listings')
             page.wait_for_selector('h1', timeout=5000)
@@ -298,7 +367,7 @@ class TestOfflineE2E:
             assert '1 Test Street' not in body_text
             assert '*' in body_text
         finally:
-            page.context.set_offline(False)
+            sw.evaluate(_SW_RESTORE_ONLINE)
 
 
 # ── Cache / state isolation across user switch ───────────────────────────────
