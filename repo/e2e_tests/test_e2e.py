@@ -450,3 +450,129 @@ class TestCoachReplyE2E:
         page.click('button:has-text("Post Reply")')
         page.wait_for_url(re.compile(rf'/classes/{class_id}'), timeout=5000)
         assert 'Thank you for attending' in page.inner_text('.coach-reply')
+
+
+# ── Drug lifecycle ────────────────────────────────────────────────────────────
+
+class TestDrugLifecycleE2E:
+    """Full browser lifecycle: create → submit for approval → approve."""
+
+    def test_new_drug_form_renders(self, page, flask_url):
+        """GET /drugs/new renders a form with at minimum a generic_name field."""
+        login(page, flask_url)
+        page.goto(f'{flask_url}/drugs/new')
+        page.wait_for_selector('form', timeout=5000)
+        assert page.query_selector('input[name=generic_name]') is not None
+
+    def test_create_drug_redirects_to_detail(self, page, flask_url):
+        """Submitting the new-drug form redirects to the drug detail page."""
+        login(page, flask_url)
+        page.goto(f'{flask_url}/drugs/new')
+        page.wait_for_selector('input[name=generic_name]', timeout=5000)
+        page.fill('input[name=generic_name]', 'E2E Lifecycle Drug')
+        page.fill('input[name=strength]', '100mg')
+        if page.query_selector('select[name=form]'):
+            page.select_option('select[name=form]', 'tablet')
+        page.click('button[type=submit]')
+        page.wait_for_url(re.compile(r'/drugs/\d+'), timeout=5000)
+        assert 'E2E Lifecycle Drug' in page.inner_text('body')
+
+    def test_drug_submit_for_approval_updates_status(self, page, flask_url):
+        """After submitting a draft drug for approval the detail page shows a
+        pending status indicator."""
+        login(page, flask_url)
+        # Create drug via form
+        page.goto(f'{flask_url}/drugs/new')
+        page.wait_for_selector('input[name=generic_name]', timeout=5000)
+        page.fill('input[name=generic_name]', 'E2E Submit Drug')
+        page.fill('input[name=strength]', '20mg')
+        if page.query_selector('select[name=form]'):
+            page.select_option('select[name=form]', 'capsule')
+        page.click('button[type=submit]')
+        page.wait_for_url(re.compile(r'/drugs/\d+'), timeout=5000)
+
+        # Submit for approval via fetch (avoids needing to know button selector)
+        page.evaluate("""
+            async () => {
+                await fetch(window.location.pathname + '/submit', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                });
+            }
+        """)
+        page.reload()
+        page.wait_for_selector('body', timeout=5000)
+        assert 'pending' in page.inner_text('body').lower()
+
+    def test_drug_approve_updates_status_to_approved(self, page, flask_url):
+        """After an admin approves a pending drug the detail page reflects
+        'approved' status."""
+        login(page, flask_url)
+        # Create drug
+        page.goto(f'{flask_url}/drugs/new')
+        page.wait_for_selector('input[name=generic_name]', timeout=5000)
+        page.fill('input[name=generic_name]', 'E2E Approve Drug')
+        page.fill('input[name=strength]', '30mg')
+        if page.query_selector('select[name=form]'):
+            page.select_option('select[name=form]', 'tablet')
+        page.click('button[type=submit]')
+        page.wait_for_url(re.compile(r'/drugs/\d+'), timeout=5000)
+
+        # Submit for approval
+        page.evaluate("""
+            async () => {
+                await fetch(window.location.pathname + '/submit', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                });
+            }
+        """)
+
+        # Approve
+        page.evaluate("""
+            async () => {
+                await fetch(window.location.pathname + '/approve', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                });
+            }
+        """)
+        page.reload()
+        page.wait_for_selector('body', timeout=5000)
+        assert 'approved' in page.inner_text('body').lower()
+
+    def test_drug_reject_updates_status(self, page, flask_url):
+        """Admin can reject a pending drug and the detail page reflects it."""
+        login(page, flask_url)
+        page.goto(f'{flask_url}/drugs/new')
+        page.wait_for_selector('input[name=generic_name]', timeout=5000)
+        page.fill('input[name=generic_name]', 'E2E Reject Drug')
+        page.fill('input[name=strength]', '5mg')
+        if page.query_selector('select[name=form]'):
+            page.select_option('select[name=form]', 'liquid')
+        page.click('button[type=submit]')
+        page.wait_for_url(re.compile(r'/drugs/\d+'), timeout=5000)
+
+        # Submit then reject
+        page.evaluate("""
+            async () => {
+                await fetch(window.location.pathname + '/submit', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                });
+            }
+        """)
+        page.evaluate("""
+            async () => {
+                await fetch(window.location.pathname + '/reject', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: 'reason=Duplicate+entry',
+                });
+            }
+        """)
+        page.reload()
+        page.wait_for_selector('body', timeout=5000)
+        assert 'rejected' in page.inner_text('body').lower()

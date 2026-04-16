@@ -220,3 +220,40 @@ class TestReviewAPI:
         client.post('/auth/login', json={'username': 'peerstaff', 'password': 'peerstaff123'})
         resp = client.put(f'/api/reviews/{review_id}', json={'rating': 1, 'comment': 'Hijacked same org'})
         assert resp.status_code == 403
+
+
+class TestReplyUpdate:
+    """Tests for PUT /api/replies/<id> (update_coach_reply)."""
+
+    def _setup_review_and_reply(self, client, training_class_id):
+        client.post('/auth/login', json={'username': 'staffuser', 'password': 'staffpass'})
+        review_resp = client.post(f'/api/classes/{training_class_id}/reviews', json={
+            'rating': 4,
+            'comment': 'Reply update test review comment!',
+        })
+        assert review_resp.status_code == 201
+        review_id = review_resp.get_json()['id']
+
+        client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        reply_resp = client.post(f'/api/reviews/{review_id}/reply', json={'body': 'Initial reply text'})
+        assert reply_resp.status_code == 201
+        reply_id = reply_resp.get_json()['id']
+        return reply_id
+
+    def test_update_reply(self, client, training_class_id):
+        reply_id = self._setup_review_and_reply(client, training_class_id)
+        resp = client.put(f'/api/replies/{reply_id}', json={'body': 'Updated reply body here'})
+        assert resp.status_code == 200
+        assert resp.get_json()['body'] == 'Updated reply body here'
+
+    def test_update_reply_empty_body_rejected(self, client, training_class_id):
+        reply_id = self._setup_review_and_reply(client, training_class_id)
+        resp = client.put(f'/api/replies/{reply_id}', json={'body': ''})
+        assert resp.status_code == 400
+        assert 'body' in resp.get_json()['error']
+
+    def test_update_reply_requires_permission(self, client, training_class_id):
+        reply_id = self._setup_review_and_reply(client, training_class_id)
+        client.post('/auth/login', json={'username': 'staffuser', 'password': 'staffpass'})
+        resp = client.put(f'/api/replies/{reply_id}', json={'body': 'Unauthorized update'})
+        assert resp.status_code == 403

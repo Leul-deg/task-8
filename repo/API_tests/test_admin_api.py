@@ -274,6 +274,108 @@ class TestBackupRestore:
         assert '.enc' in resp.get_json()['error']
 
 
+class TestAdminMissingRoutes:
+    """Tests for admin API routes not covered elsewhere."""
+
+    def test_get_user_by_id(self, client):
+        client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        users = client.get('/api/admin/users').get_json()
+        staff = next(u for u in users if u['username'] == 'staffuser')
+        resp = client.get(f'/api/admin/users/{staff["id"]}')
+        assert resp.status_code == 200
+        assert resp.get_json()['username'] == 'staffuser'
+
+    def test_get_user_by_id_out_of_scope_denied(self, client):
+        from app.models.user import User, Role
+        from app.models.organization import OrgUnit, UserOrgUnit
+        from app.utils.constants import OrgUnitLevel
+        from app.extensions import db as _db
+
+        with client.application.app_context():
+            org2 = OrgUnit(name='Other Campus', code='TC_OOS', level=OrgUnitLevel.CAMPUS.value)
+            _db.session.add(org2)
+            _db.session.flush()
+            scoped = User(username='scoped_admin2', email='scoped2@test.com', full_name='Scoped 2')
+            scoped.set_password('Scoped123!')
+            _db.session.add(scoped)
+            _db.session.flush()
+            scoped.roles.append(Role.query.filter_by(name='org_admin').first())
+            _db.session.add(UserOrgUnit(user_id=scoped.id, org_unit_id=org2.id, is_primary=True))
+            _db.session.commit()
+            target_id = User.query.filter_by(username='staffuser').first().id
+
+        client.post('/auth/login', json={'username': 'scoped_admin2', 'password': 'Scoped123!'})
+        resp = client.get(f'/api/admin/users/{target_id}')
+        assert resp.status_code == 403
+
+    def test_delete_role(self, client):
+        client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        users = client.get('/api/admin/users').get_json()
+        staff = next(u for u in users if u['username'] == 'staffuser')
+        client.post(f'/api/admin/users/{staff["id"]}/roles', json={'role': 'instructor'})
+        resp = client.delete(f'/api/admin/users/{staff["id"]}/roles/instructor')
+        assert resp.status_code == 200
+        assert 'instructor' not in resp.get_json()['roles']
+
+    def test_delete_role_out_of_scope_denied(self, client):
+        from app.models.user import User, Role
+        from app.models.organization import OrgUnit, UserOrgUnit
+        from app.utils.constants import OrgUnitLevel
+        from app.extensions import db as _db
+
+        with client.application.app_context():
+            org2 = OrgUnit(name='Other Campus', code='TC_DEL', level=OrgUnitLevel.CAMPUS.value)
+            _db.session.add(org2)
+            _db.session.flush()
+            scoped = User(username='scoped_del', email='scoped_del@test.com', full_name='Scoped Del')
+            scoped.set_password('Scoped123!')
+            _db.session.add(scoped)
+            _db.session.flush()
+            scoped.roles.append(Role.query.filter_by(name='org_admin').first())
+            _db.session.add(UserOrgUnit(user_id=scoped.id, org_unit_id=org2.id, is_primary=True))
+            _db.session.commit()
+            target_id = User.query.filter_by(username='staffuser').first().id
+
+        client.post('/auth/login', json={'username': 'scoped_del', 'password': 'Scoped123!'})
+        resp = client.delete(f'/api/admin/users/{target_id}/roles/staff')
+        assert resp.status_code == 403
+
+    def test_create_org_unit(self, client):
+        client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        resp = client.post('/api/admin/org-units', json={
+            'name': 'New Department',
+            'code': 'ND1',
+            'level': 'department',
+        })
+        assert resp.status_code == 201
+        assert resp.get_json()['code'] == 'ND1'
+
+    def test_create_org_unit_requires_permission(self, client):
+        client.post('/auth/login', json={'username': 'staffuser', 'password': 'staffpass'})
+        resp = client.post('/api/admin/org-units', json={
+            'name': 'Unauthorized Dept',
+            'code': 'UD1',
+            'level': 'department',
+        })
+        assert resp.status_code == 403
+
+    def test_list_backups_api(self, client):
+        client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})
+        resp = client.get('/api/admin/backups')
+        assert resp.status_code == 200
+        assert isinstance(resp.get_json(), list)
+
+    def test_list_backups_api_requires_permission(self, client):
+        client.post('/auth/login', json={'username': 'staffuser', 'password': 'staffpass'})
+        resp = client.get('/api/admin/backups')
+        assert resp.status_code == 403
+
+    def test_run_backup_api_requires_permission(self, client):
+        client.post('/auth/login', json={'username': 'staffuser', 'password': 'staffpass'})
+        resp = client.post('/api/admin/backup')
+        assert resp.status_code == 403
+
+
 class TestBackupAdminPages:
     def test_backups_page_reachable_for_admin(self, client):
         client.post('/auth/login', json={'username': 'admin', 'password': 'admin123'})

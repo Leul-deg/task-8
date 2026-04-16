@@ -4,7 +4,9 @@ set -e
 UNIT_STATUS=0
 API_STATUS=0
 E2E_STATUS=0
+COVERAGE_STATUS=0
 E2E_RESULT="skipped"
+COVERAGE_RESULT=""
 RUNNER_MODE=""
 TEST_ENV_PREFIX="env -u SECRET_KEY -u HMAC_SECRET -u ENCRYPTION_KEY -u DATABASE_URL -u FLASK_ENV"
 
@@ -79,6 +81,14 @@ API_RESULT=$(echo "$API_OUTPUT" | grep -E '^\d+ passed|^=.*(passed|failed|error)
 
 echo ""
 echo "========================================"
+echo "  Coverage Report (unit + API combined)"
+echo "========================================"
+COVERAGE_OUTPUT=$(run_python_test_cmd "python3 -m pytest unit_tests/ API_tests/ -q --tb=no --cov=app --cov-report=term-missing" 2>&1) && COVERAGE_STATUS=0 || COVERAGE_STATUS=$?
+echo "$COVERAGE_OUTPUT"
+COVERAGE_RESULT=$(echo "$COVERAGE_OUTPUT" | grep -E '^TOTAL' | tail -1)
+
+echo ""
+echo "========================================"
 echo "  Running E2E Tests (Playwright/Chromium)"
 echo "========================================"
 if run_python_test_cmd "python3 -c \"import playwright\"" >/dev/null 2>&1; then
@@ -87,15 +97,16 @@ if run_python_test_cmd "python3 -c \"import playwright\"" >/dev/null 2>&1; then
         echo "$E2E_OUTPUT"
         E2E_RESULT=$(echo "$E2E_OUTPUT" | grep -E '^\d+ passed|^=.*(passed|failed|error)' | tail -1)
     else
-        echo "Chromium browser not installed — run 'playwright install chromium' first"
-        echo "Skipping E2E tests (not a failure)"
-        E2E_STATUS=0
-        E2E_RESULT="skipped (no browser)"
+        echo "ERROR: Chromium browser not installed — run 'playwright install chromium'"
+        echo "playwright and pytest-playwright must be installed and the browser present for E2E tests to run."
+        E2E_STATUS=1
+        E2E_RESULT="FAILED (chromium not installed)"
     fi
 else
-    echo "playwright not installed — skipping E2E tests"
-    E2E_STATUS=0
-    E2E_RESULT="skipped (not installed)"
+    echo "ERROR: playwright not installed — E2E tests cannot run"
+    echo "Install with: pip install playwright pytest-playwright && playwright install chromium"
+    E2E_STATUS=1
+    E2E_RESULT="FAILED (playwright not installed)"
 fi
 
 echo ""
@@ -105,8 +116,9 @@ echo "========================================"
 echo "Unit tests : $UNIT_RESULT"
 echo "API tests  : $API_RESULT"
 echo "E2E tests  : $E2E_RESULT"
+echo "Coverage   : $COVERAGE_RESULT"
 
-if [ $UNIT_STATUS -ne 0 ] || [ $API_STATUS -ne 0 ] || [ $E2E_STATUS -ne 0 ]; then
+if [ $UNIT_STATUS -ne 0 ] || [ $API_STATUS -ne 0 ] || [ $E2E_STATUS -ne 0 ] || [ $COVERAGE_STATUS -ne 0 ]; then
     echo ""
     echo "RESULT: SOME TESTS FAILED"
     exit 1

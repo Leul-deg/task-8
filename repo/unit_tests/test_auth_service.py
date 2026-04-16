@@ -126,3 +126,81 @@ class TestStaffRoleAssignment:
         user = register_user('norole', VALID_PW, 'norole@example.com')
         assert user.id is not None
         assert user.roles.count() == 0
+
+
+class TestRateLimiter:
+    """Rate-limit enforcement tests — require a custom app fixture with
+    LOGIN_MAX_ATTEMPTS_PER_IP and LOGIN_MAX_ATTEMPTS_PER_USERNAME > 0."""
+
+    @pytest.fixture
+    def rate_limited_app(self):
+        application = create_app('testing')
+        application.config['LOGIN_MAX_ATTEMPTS_PER_IP'] = 3
+        application.config['LOGIN_MAX_ATTEMPTS_PER_USERNAME'] = 3
+        with application.app_context():
+            _db.create_all()
+            register_user('ratelimited', VALID_PW, 'rl@test.com')
+            yield application
+            _db.session.remove()
+            _db.drop_all()
+
+    @pytest.fixture
+    def rl_client(self, rate_limited_app):
+        return rate_limited_app.test_client()
+
+    def _bad_login(self, client, times=1, username='ratelimited'):
+        for _ in range(times):
+            client.post('/auth/login', json={
+                'username': username, 'password': 'wrongpass'
+            })
+
+    def test_ip_lockout_blocks_after_threshold(self, rl_client):
+        """After max IP failures, the next attempt returns 429."""
+        self._bad_login(rl_client, times=3)
+        resp = rl_client.post('/auth/login', json={
+            'username': 'ratelimited', 'password': 'wrongpass'
+        })
+        assert resp.status_code == 429
+        data = resp.get_json()
+        assert 'Too many' in data['error']
+
+    def test_username_lockout_blocks_correct_password(self, rl_client):
+        """After max failures, even the correct password is blocked with 429."""
+        self._bad_login(rl_client, times=3)
+        resp = rl_client.post('/auth/login', json={
+            'username': 'ratelimited', 'password': VALID_PW
+        })
+        assert resp.status_code == 429
+
+    def test_below_threshold_not_rate_limited(self, rl_client):
+        """Exactly N-1 failures must not trigger lockout on the Nth attempt."""
+        self._bad_login(rl_client, times=2)
+        resp = rl_client.post('/auth/login', json={
+            'username': 'ratelimited', 'password': 'wrongpass'
+        })
+        assert resp.status_code == 401  # still a normal auth failure, not 429
+
+    def test_successful_login_not_counted_as_failure(self, rl_client):
+        """Successful logins do not contribute to the failure counter."""
+        self._bad_login(rl_client, times=2)
+        resp = rl_client.post('/auth/login', json={
+            'username': 'ratelimited', 'password': VALID_PW
+        })
+        assert resp.status_code == 200
+        # 2 failures total — a success does not add to the count
+        resp = rl_client.post('/auth/login', json={
+            'username': 'ratelimited', 'password': VALID_PW
+        })
+        assert resp.status_code == 200
+
+    def test_rate_limit_service_direct(self, rate_limited_app):
+        """Service-level: _check_rate_limit raises RateLimitError after N recorded failures."""
+        from app.services.auth_service import _check_rate_limit, RateLimitError
+        from app.models.login_attempt import LoginAttempt
+
+        with rate_limited_app.app_context():
+            for _ in range(3):
+                _db.session.add(LoginAttempt(key='user:directtest', succeeded=False))
+            _db.session.commit()
+            with pytest.raises(RateLimitError, match='Too many'):
+                _check_rate_limit('user:directtest', 3, 900)

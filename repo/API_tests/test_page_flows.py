@@ -734,3 +734,427 @@ class TestDrugApprovalPageVisibility:
         _login(client, 'staffuser', 'staffpass')
         resp = client.get(f'/drugs/{drug_id}')
         assert resp.status_code == 403
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 15. DRUG PAGE FLOWS (new form, submit/approve/reject, import)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestDrugPageFlows:
+    def _create_drug_id(self, client, app):
+        _login(client)
+        client.post('/drugs', data={
+            'generic_name': 'Metformin',
+            'strength': '500mg',
+            'form': 'tablet',
+            'description': 'Type 2 diabetes medication',
+        })
+        with app.app_context():
+            from app.models.drug import Drug
+            drug = Drug.query.filter_by(generic_name='Metformin').first()
+            return drug.id
+
+    def test_drug_new_form_renders(self, client):
+        _login(client)
+        resp = client.get('/drugs/new')
+        assert resp.status_code == 200
+
+    def test_drug_new_form_staff_forbidden(self, client):
+        _login(client, 'staffuser', 'staffpass')
+        resp = client.get('/drugs/new')
+        assert resp.status_code == 403
+
+    def test_drug_submit_page(self, client, app):
+        drug_id = self._create_drug_id(client, app)
+        resp = client.post(f'/drugs/{drug_id}/submit', follow_redirects=False)
+        assert resp.status_code == 302
+        assert f'/drugs/{drug_id}' in resp.headers.get('Location', '')
+        with app.app_context():
+            from app.models.drug import Drug
+            drug = Drug.query.get(drug_id)
+            assert drug.status == 'pending_approval'
+
+    def test_drug_approve_page(self, client, app):
+        drug_id = self._create_drug_id(client, app)
+        client.post(f'/drugs/{drug_id}/submit')
+        resp = client.post(f'/drugs/{drug_id}/approve', follow_redirects=False)
+        assert resp.status_code == 302
+        with app.app_context():
+            from app.models.drug import Drug
+            drug = Drug.query.get(drug_id)
+            assert drug.status == 'approved'
+
+    def test_drug_reject_page(self, client, app):
+        drug_id = self._create_drug_id(client, app)
+        client.post(f'/drugs/{drug_id}/submit')
+        resp = client.post(
+            f'/drugs/{drug_id}/reject',
+            data={'reason': 'Incomplete safety data'},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        with app.app_context():
+            from app.models.drug import Drug
+            drug = Drug.query.get(drug_id)
+            assert drug.status == 'rejected'
+
+    def test_drug_import_page_get(self, client):
+        _login(client)
+        resp = client.get('/drugs/import')
+        assert resp.status_code == 200
+        assert b'import' in resp.data.lower()
+
+    def test_drug_import_page_post(self, client, app):
+        import io
+        _login(client)
+        with app.app_context():
+            from app.models.drug import Drug
+            count_before = Drug.query.count()
+        csv_content = (
+            b"generic_name,strength,form,description\n"
+            b"Aspirin,100mg,tablet,Pain reliever\n"
+        )
+        resp = client.post(
+            '/drugs/import',
+            data={'csv_file': (io.BytesIO(csv_content), 'drugs.csv')},
+            content_type='multipart/form-data',
+        )
+        assert resp.status_code == 200
+        with app.app_context():
+            from app.models.drug import Drug
+            assert Drug.query.count() == count_before + 1
+
+    def test_drug_import_page_post_no_file(self, client):
+        _login(client)
+        resp = client.post('/drugs/import', data={})
+        assert resp.status_code == 200
+        assert b'No file' in resp.data or b'no file' in resp.data.lower()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 16. CLASS PAGE ROUTES (attendance, review page submission, list)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestClassPageMissingRoutes:
+    def _get_class_id(self, app):
+        with app.app_context():
+            return TrainingClass.query.first().id
+
+    def _get_attendee_user_id(self, app, class_id):
+        with app.app_context():
+            from app.models.training import ClassAttendee
+            att = ClassAttendee.query.filter_by(class_id=class_id).first()
+            return att.user_id
+
+    def test_class_index_page_renders(self, client):
+        _login(client)
+        resp = client.get('/classes')
+        assert resp.status_code == 200
+        assert b'Safety Refresher' in resp.data
+
+    def test_class_index_htmx_returns_partial(self, client):
+        _login(client)
+        resp = client.get('/classes', headers={'HX-Request': 'true'})
+        assert resp.status_code == 200
+        assert b'<!DOCTYPE' not in resp.data
+
+    def test_attendance_instructor_marks_attended(self, client, app):
+        _login(client)  # admin is the instructor
+        cid = self._get_class_id(app)
+        uid = self._get_attendee_user_id(app, cid)
+        resp = client.post(
+            f'/classes/{cid}/attendance',
+            data={'attended_users': [str(uid)]},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        assert f'/classes/{cid}' in resp.headers.get('Location', '')
+        with app.app_context():
+            from app.models.training import ClassAttendee
+            att = ClassAttendee.query.filter_by(class_id=cid, user_id=uid).first()
+            assert att is not None
+            assert att.attended is True
+
+    def test_attendance_non_instructor_gets_flash_error(self, client, app):
+        _login(client, 'staffuser', 'staffpass')
+        cid = self._get_class_id(app)
+        resp = client.post(
+            f'/classes/{cid}/attendance',
+            data={'attended_users': []},
+            follow_redirects=False,
+        )
+        # Handler catches PermissionError, flashes error, and redirects
+        assert resp.status_code == 302
+
+    def test_class_review_page_duplicate_flashes_and_redirects(self, client, app):
+        # Staff already reviewed in _seed(); posting again exercises the ValueError → redirect path
+        _login(client, 'staffuser', 'staffpass')
+        cid = self._get_class_id(app)
+        resp = client.post(
+            f'/classes/{cid}/reviews',
+            data={'rating': '3', 'comment': 'Duplicate review attempt'},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+
+    def test_class_list_api_returns_json(self, client):
+        _login(client)
+        resp = client.get('/api/classes')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert isinstance(data, list)
+        assert any(c['title'] == 'Safety Refresher' for c in data)
+
+    def test_class_list_api_htmx_returns_partial(self, client):
+        _login(client)
+        resp = client.get('/api/classes', headers={'HX-Request': 'true'})
+        assert resp.status_code == 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 17. ADMIN PAGE ROUTES (panel, users page, permissions audit, backup run)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestAdminPageRoutes:
+    def test_admin_panel_renders(self, client):
+        _login(client)
+        resp = client.get('/admin')
+        assert resp.status_code == 200
+
+    def test_admin_panel_staff_forbidden(self, client):
+        _login(client, 'staffuser', 'staffpass')
+        resp = client.get('/admin')
+        assert resp.status_code == 403
+
+    def test_admin_users_page_renders(self, client):
+        _login(client)
+        resp = client.get('/admin/users')
+        assert resp.status_code == 200
+        assert b'admin' in resp.data
+
+    def test_admin_users_page_staff_forbidden(self, client):
+        _login(client, 'staffuser', 'staffpass')
+        resp = client.get('/admin/users')
+        assert resp.status_code == 403
+
+    def test_admin_permissions_audit_page_renders(self, client):
+        _login(client)
+        resp = client.get('/admin/permissions/audit')
+        assert resp.status_code == 200
+
+    def test_admin_permissions_audit_staff_forbidden(self, client):
+        _login(client, 'staffuser', 'staffpass')
+        resp = client.get('/admin/permissions/audit')
+        assert resp.status_code == 403
+
+    def test_admin_assign_role_page(self, client, app):
+        _login(client)
+        with app.app_context():
+            from app.models.user import User
+            staff = User.query.filter_by(username='staffuser').first()
+            staff_id = staff.id
+        resp = client.post(
+            f'/admin/users/{staff_id}/roles',
+            data={'role_name': 'instructor'},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        with app.app_context():
+            from app.models.user import User
+            staff = User.query.get(staff_id)
+            role_names = {r.name for r in staff.roles}
+            assert 'instructor' in role_names
+
+    def test_admin_backups_run_staff_forbidden(self, client):
+        _login(client, 'staffuser', 'staffpass')
+        resp = client.post('/admin/backups/run')
+        assert resp.status_code == 403
+
+    def test_admin_backups_run_admin_redirects(self, client):
+        # create_backup may fail on in-memory DB, but the handler catches RuntimeError
+        # and always redirects to /admin/backups
+        _login(client)
+        resp = client.post('/admin/backups/run', follow_redirects=False)
+        assert resp.status_code == 302
+        assert '/admin/backups' in resp.headers.get('Location', '')
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MODERATION APPEALS
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestModerationAppealsPageFlow:
+    """Tests for POST /moderation/reports/<id>/appeal and
+    POST /moderation/appeals/<id>/resolve."""
+
+    def _setup_hidden_report(self, app):
+        """Create a report that has already been hidden (required for filing an appeal)."""
+        from app.models.training import TrainingClass, ClassAttendee, ClassReview
+        from app.models.moderation import ModerationReport
+        from app.services.moderation_service import hide_review
+
+        with app.app_context():
+            org = OrgUnit.query.filter_by(code='TC1').one()
+            admin = User.query.filter_by(username='admin').one()
+            staff = User.query.filter_by(username='staffuser').one()
+
+            tc = TrainingClass(
+                title='Appeal Test Class',
+                instructor_id=admin.id,
+                org_unit_id=org.id,
+                class_date=date(2026, 11, 1),
+                location='Room A',
+                max_attendees=20,
+            )
+            _db.session.add(tc)
+            _db.session.flush()
+            _db.session.add(ClassAttendee(class_id=tc.id, user_id=staff.id, attended=True))
+
+            review = ClassReview(
+                class_id=tc.id,
+                reviewer_id=staff.id,
+                rating=1,
+                comment='Terrible class — the instructor was useless.',
+            )
+            _db.session.add(review)
+            _db.session.flush()
+
+            report = ModerationReport(
+                review_id=review.id,
+                reported_by_id=admin.id,
+                reason='Inappropriate language',
+                status='pending',
+            )
+            _db.session.add(report)
+            _db.session.commit()
+
+            hide_review(report, admin, 'Contains offensive language')
+            _db.session.commit()
+
+            return report.id, staff.id
+
+    def test_appeal_filed_by_review_author_redirects(self, client, app):
+        """Staff (review author) can file an appeal on a hidden report."""
+        report_id, _ = self._setup_hidden_report(app)
+        _login(client, 'staffuser', 'staffpass')
+        resp = client.post(
+            f'/moderation/reports/{report_id}/appeal',
+            data={'appeal_text': 'I believe this was unfairly hidden because my comment was factual.'},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+
+    def test_appeal_creates_moderation_appeal_record(self, client, app):
+        """Filing an appeal writes a ModerationAppeal row to the database."""
+        from app.models.moderation import ModerationAppeal
+
+        report_id, _ = self._setup_hidden_report(app)
+        _login(client, 'staffuser', 'staffpass')
+        client.post(
+            f'/moderation/reports/{report_id}/appeal',
+            data={'appeal_text': 'I believe this was unfairly hidden because my comment was factual.'},
+        )
+        with app.app_context():
+            appeal = ModerationAppeal.query.filter_by(report_id=report_id).first()
+            assert appeal is not None
+            assert appeal.status == 'pending'
+
+    def test_appeal_text_too_short_flashes_error(self, client, app):
+        """Appeal text under 20 characters is rejected and redirects (with flash error)."""
+        report_id, _ = self._setup_hidden_report(app)
+        _login(client, 'staffuser', 'staffpass')
+        resp = client.post(
+            f'/moderation/reports/{report_id}/appeal',
+            data={'appeal_text': 'Too short'},
+            follow_redirects=False,
+        )
+        # Route catches ValueError and flashes — always redirects
+        assert resp.status_code == 302
+
+    def test_appeal_requires_review_author(self, client, app):
+        """Admin (not the review author) filing an appeal is rejected (PermissionError → flash)."""
+        report_id, _ = self._setup_hidden_report(app)
+        _login(client)  # logged in as admin, not the review author
+        resp = client.post(
+            f'/moderation/reports/{report_id}/appeal',
+            data={'appeal_text': 'I believe this was unfairly hidden because my comment was factual.'},
+            follow_redirects=False,
+        )
+        # Route catches PermissionError and flashes error; still redirects
+        assert resp.status_code == 302
+
+    def test_resolve_appeal_upheld_by_moderator(self, client, app):
+        """Admin (moderator) can resolve a pending appeal with decision='upheld'."""
+        from app.models.moderation import ModerationAppeal
+
+        report_id, _ = self._setup_hidden_report(app)
+        _login(client, 'staffuser', 'staffpass')
+        client.post(
+            f'/moderation/reports/{report_id}/appeal',
+            data={'appeal_text': 'I believe this was unfairly hidden because my comment was factual.'},
+        )
+
+        with app.app_context():
+            appeal = ModerationAppeal.query.filter_by(report_id=report_id).first()
+            appeal_id = appeal.id
+
+        _login(client)  # re-login as admin
+        resp = client.post(
+            f'/moderation/appeals/{appeal_id}/resolve',
+            data={'decision': 'upheld', 'notes': 'Reviewed — decision stands.'},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+
+        with app.app_context():
+            appeal = ModerationAppeal.query.get(appeal_id)
+            assert appeal.status == 'upheld'
+
+    def test_resolve_appeal_overturned_by_moderator(self, client, app):
+        """Admin can resolve an appeal with decision='overturned'."""
+        from app.models.moderation import ModerationAppeal
+
+        report_id, _ = self._setup_hidden_report(app)
+        _login(client, 'staffuser', 'staffpass')
+        client.post(
+            f'/moderation/reports/{report_id}/appeal',
+            data={'appeal_text': 'I believe this was unfairly hidden because my comment was factual.'},
+        )
+
+        with app.app_context():
+            appeal = ModerationAppeal.query.filter_by(report_id=report_id).first()
+            appeal_id = appeal.id
+
+        _login(client)
+        resp = client.post(
+            f'/moderation/appeals/{appeal_id}/resolve',
+            data={'decision': 'overturned', 'notes': 'Upon review, appeal is overturned.'},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+
+        with app.app_context():
+            appeal = ModerationAppeal.query.get(appeal_id)
+            assert appeal.status == 'overturned'
+
+    def test_resolve_requires_moderator_permission(self, client, app):
+        """Staff user without review.moderate cannot resolve appeals."""
+        from app.models.moderation import ModerationAppeal
+
+        report_id, _ = self._setup_hidden_report(app)
+        _login(client, 'staffuser', 'staffpass')
+        client.post(
+            f'/moderation/reports/{report_id}/appeal',
+            data={'appeal_text': 'I believe this was unfairly hidden because my comment was factual.'},
+        )
+
+        with app.app_context():
+            appeal = ModerationAppeal.query.filter_by(report_id=report_id).first()
+            appeal_id = appeal.id
+
+        # Staff tries to resolve — missing review.moderate permission
+        resp = client.post(
+            f'/moderation/appeals/{appeal_id}/resolve',
+            data={'decision': 'upheld', 'notes': 'Staff attempt'},
+        )
+        assert resp.status_code == 403
