@@ -16,6 +16,7 @@ docker compose up --build
 ```
 
 Access: http://localhost:5000
+Default credentials: check the container logs on first start — bootstrap credentials are printed once when `ALLOW_DEFAULT_BOOTSTRAP_USERS=1`.
 
 `docker compose up --build` works from a clean checkout without a local `.env` file because
 `docker-compose.yml` includes safe development defaults for `SECRET_KEY`, `HMAC_SECRET`,
@@ -76,15 +77,14 @@ flask run       # starts development server on http://127.0.0.1:5000
 ## Running Tests
 
 ```bash
-# In Docker
-docker compose exec web bash run_tests.sh
-
-# Locally
-pip install -r requirements.txt
+# Default — uses Docker automatically when Docker Compose is available
 bash run_tests.sh
+
+# Force local execution (requires local pytest install)
+RUN_TESTS_FORCE_LOCAL=1 bash run_tests.sh
 ```
 
-`run_tests.sh` always runs unit + API tests. E2E tests run only when Playwright and Chromium are installed; otherwise they are skipped without failing the suite.
+`run_tests.sh` prefers Docker by default. E2E tests run only when Playwright and Chromium are installed; otherwise they are skipped without failing the suite.
 
 ## API Endpoints
 
@@ -177,7 +177,6 @@ python -c "import base64, os; print(base64.b64encode(os.urandom(32)).decode())"
 ## Project Structure
 
 ```
-clinical_ops_portal/
 ├── app/
 │   ├── __init__.py              # App factory, CLI commands, FTS table setup
 │   ├── config.py                # Dev / Test / Prod configuration
@@ -254,7 +253,7 @@ clinical_ops_portal/
 |------|------------|
 | `org_admin` | All permissions |
 | `property_manager` | listing.create, listing.edit, listing.publish, listing.delete, listing.lock |
-| `instructor` | review.reply |
+| `instructor` | class.create, review.reply |
 | `content_moderator` | review.moderate |
 | `staff` | review.create, listing.create |
 
